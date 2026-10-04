@@ -10,7 +10,7 @@ import type {
 } from "@/lib/schema";
 import { Icon, Modal, Markdown, request, download, type IconName } from "./ui";
 import { SettingsModal, type SettingsResponse } from "./settings";
-import { StyleIntro, StyleEmptyVisual, type VisualStyle } from "./style-scenes";
+import { TerminalIntro, TerminalEmptyVisual } from "./style-scenes";
 
 const MODES: {
   id: "refine" | "plan" | "prompt";
@@ -65,18 +65,11 @@ const STARTERS = [
     idea: "I want to improve an existing app. Help me define the change, inspect the current implementation, and plan a focused update that preserves the rest of the project.",
   },
 ];
-const VISUAL_STYLES = [
-  { id: "original", name: "Original", mood: "Your current workspace", fonts: "Arial", colors: "Violet · cloud · white", swatches: ["#f8f9fb", "#7160cf", "#252733"] },
-  { id: "atelier", name: "The Atelier", mood: "Editorial · warm · tactile", fonts: "Manrope + Newsreader", colors: "Ink · chalk · persimmon", swatches: ["#f3f0e8", "#bd563c", "#26352d"] },
-  { id: "blueprint", name: "The Blueprint", mood: "Swiss grid · spatial · crisp", fonts: "Space Grotesk + Space Mono", colors: "Blueprint · cobalt · frost", swatches: ["#e7edf0", "#3159df", "#19374b"] },
-  { id: "terminal", name: "The Terminal", mood: "Monospace · focused · alive", fonts: "IBM Plex Sans + IBM Plex Mono", colors: "Black · soft red · pearl", swatches: ["#0b0b0e", "#f0787e", "#e9e4e5"] },
-  { id: "brutalist", name: "The Poster", mood: "Brutalist · loud · kinetic", fonts: "Barlow Condensed + DM Mono", colors: "Signal red · ink · paper", swatches: ["#f3f0e7", "#f05236", "#191815"] },
-] as const;
 type Detail = { project: Project; versions: Version[]; messages: Message[] };
 export default function Workspace() {
-  const [visualStyle, setVisualStyle] = useState<VisualStyle>("original");
+
   const [motionPaused, setMotionPaused] = useState(false);
-  const stylePickerRef = useRef<HTMLDetailsElement>(null);
+
   const [settings, setSettings] = useState<SettingsResponse | null>(null),
     [examples, setExamples] = useState<Example[]>([]);
   const [projects, setProjects] = useState<Project[]>([]),
@@ -137,39 +130,6 @@ export default function Workspace() {
         : draft?.executionPrompt;
   const reloadSettings = useCallback(async () => {
     setSettings(await request<SettingsResponse>("/api/settings"));
-  }, []);
-  useEffect(() => {
-    let saved: string | null = null;
-    try { saved = window.localStorage.getItem("ideaprompt-visual-style"); } catch { return; }
-    if (!VISUAL_STYLES.some((style) => style.id === saved)) return;
-    const frame = window.requestAnimationFrame(() =>
-      setVisualStyle(saved as VisualStyle),
-    );
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-  function chooseVisualStyle(style: VisualStyle) {
-    setVisualStyle(style);
-    setShowSidebar(false);
-    try { window.localStorage.setItem("ideaprompt-visual-style", style); } catch { /* Session selection still works when storage is unavailable. */ }
-    stylePickerRef.current?.removeAttribute("open");
-    stylePickerRef.current?.querySelector("summary")?.focus();
-  }
-  useEffect(() => {
-    function closePicker(event: PointerEvent | KeyboardEvent) {
-      const picker = stylePickerRef.current;
-      if (!picker?.open) return;
-      if (event instanceof KeyboardEvent) {
-        if (event.key !== "Escape") return;
-        picker.querySelector("summary")?.focus();
-      } else if (event.target instanceof Node && picker.contains(event.target)) return;
-      picker.removeAttribute("open");
-    }
-    document.addEventListener("pointerdown", closePicker);
-    document.addEventListener("keydown", closePicker);
-    return () => {
-      document.removeEventListener("pointerdown", closePicker);
-      document.removeEventListener("keydown", closePicker);
-    };
   }, []);
   const reloadExamples = useCallback(async () => {
     setExamples(await request<Example[]>("/api/examples"));
@@ -464,7 +424,7 @@ export default function Workspace() {
   const covered =
     draft?.coverage.filter((c) => c.status === "specified").length || 0;
   return (
-    <div className="app-shell" data-visual-style={visualStyle} data-motion-paused={motionPaused}>
+    <div className="app-shell" data-visual-style="terminal" data-motion-paused={motionPaused}>
       {showSidebar && (
         <button
           className="sidebar-scrim"
@@ -600,12 +560,15 @@ export default function Workspace() {
               </button>
             )}
           </div>
-          <span className="local-badge">
-            <i className="status-dot" /> Local workspace
-          </span>
+          <div className="topbar-actions">
+            <button className="motion-toggle" type="button" aria-pressed={motionPaused} onClick={() => setMotionPaused(!motionPaused)}>
+              {motionPaused ? "Resume motion" : "Pause motion"}
+            </button>
+            <span className="local-badge"><i className="status-dot" /> Local workspace</span>
+          </div>
         </header>
         <div className="page-content">
-          <StyleIntro key={visualStyle} style={visualStyle} paused={motionPaused} />
+          <TerminalIntro paused={motionPaused} />
           <div className="mode-grid" aria-label="Choose a mode">
             {MODES.map((m, i) => (
               <button
@@ -1112,28 +1075,7 @@ export default function Workspace() {
               >
                 {!draft ? (
                   <div className="empty-output">
-                    <StyleEmptyVisual style={visualStyle} />
-                    <div className="empty-illustration" aria-hidden="true">
-                      <span className="mini-spark">✳</span>
-                      <div className="paper paper-back" />
-                      <div className="paper paper-front">
-                        <div className="paper-header">
-                          <span />
-                          <span />
-                          <span />
-                        </div>
-                        <div className="paper-code">
-                          <Icon name="prompt" size={25} />
-                        </div>
-                        <i />
-                        <i />
-                        <i />
-                        <span className="paper-check">
-                          <Icon name="check" size={17} />
-                        </span>
-                      </div>
-                      <span className="orbit-dot" />
-                    </div>
+                    <TerminalEmptyVisual />
                     <span className="eyebrow">A CLEARER PATH FORWARD</span>
                     <h3>
                       Your idea, ready for
@@ -1398,39 +1340,6 @@ export default function Workspace() {
           </footer>
         </div>
       </main>
-      <details className="style-picker" ref={stylePickerRef}>
-        <summary aria-label="Choose a website style" title="Choose a website style">
-          <span className="style-picker-icon"><Icon name="spark" size={18} /></span>
-          <span className="style-picker-label">Style</span>
-          <span className="style-picker-current">{VISUAL_STYLES.find((style) => style.id === visualStyle)?.name}</span>
-          <Icon name="chevron" size={15} />
-        </summary>
-        <div className="style-menu" aria-label="Website styles">
-          <div className="style-menu-heading"><span>Choose a visual direction</span><span>05</span></div>
-          {VISUAL_STYLES.map((style, index) => (
-            <button
-              className="style-option"
-              type="button"
-              key={style.id}
-              aria-pressed={visualStyle === style.id}
-              onClick={() => chooseVisualStyle(style.id)}
-            >
-              <span className="style-index">0{index + 1}</span>
-              <span className="style-option-copy">
-                <strong>{style.name}</strong>
-                <span>{style.mood}</span>
-                <small>{style.fonts}</small>
-                <small>{style.colors}</small>
-              </span>
-              <span className="style-swatches" aria-hidden="true">
-                {style.swatches.map((color) => <i key={color} style={{ backgroundColor: color }} />)}
-              </span>
-              <Icon name="check" size={15} className="style-check" />
-            </button>
-          ))}
-          <label className="motion-control"><input type="checkbox" checked={motionPaused} onChange={(event) => setMotionPaused(event.target.checked)} /> Pause decorative motion</label>
-        </div>
-      </details>
       {toast && (
         <div className="toast" role="status">
           <Icon name="check" size={17} />
