@@ -204,7 +204,7 @@ export class Store {
   finishRun(
     input: GenerationInput,
     draft: Draft,
-    settings: Settings,
+    provider: string,
     checklistVersion: number,
     model: string,
   ) {
@@ -238,7 +238,7 @@ export class Store {
           input.projectId,
           input.requestId,
           JSON.stringify(draft),
-          settings.provider,
+          provider,
           model,
           input.mode,
           input.tool,

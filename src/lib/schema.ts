@@ -1,7 +1,15 @@
 import { z } from "zod";
 
 export const TEMPLATE_VERSION = "1.0.0";
-export const providerSchema = z.enum(["groq", "openrouter"]);
+export const PROVIDER_IDS = [
+  "groq",
+  "gemini",
+  "openrouter",
+  "cloudflare",
+  "pollinations",
+] as const;
+export const providerSchema = z.enum(PROVIDER_IDS);
+export const targetSchema = z.enum(["website", "idea"]);
 export const modeSchema = z.enum(["refine", "plan", "prompt"]);
 export const contextSchema = z
   .object({
@@ -32,10 +40,17 @@ export const controlSchema = z
   .strict();
 export const settingsSchema = z
   .object({
-    provider: providerSchema,
-    models: z
-      .object({ groq: z.string().max(150), openrouter: z.string().max(150) })
-      .strict(),
+    // Providers in the order they are tried; the first one that answers wins.
+    order: z
+      .array(providerSchema)
+      .max(PROVIDER_IDS.length)
+      .default([...PROVIDER_IDS])
+      .transform((o) => [
+        ...new Set(o),
+        ...PROVIDER_IDS.filter((p) => !o.includes(p)),
+      ]),
+    // Per-provider model overrides; an empty entry uses the provider's default.
+    models: z.partialRecord(providerSchema, z.string().max(150)).default({}),
     preferences: z
       .object({
         stack: z.string().max(500),
@@ -45,12 +60,10 @@ export const settingsSchema = z
       })
       .strict(),
     controls: z.array(controlSchema).min(1).max(30),
-    maxTokens: z.number().int().min(1024).max(12000),
-    stream: z.boolean(),
-    openRouterZdr: z.boolean(),
-    groqFreePlanConfirmed: z.boolean().default(false),
+    // Groq's free tier is the only route with a small per-minute allowance, so only it is capped.
+    groqMaxTokens: z.number().int().min(512).max(8000).default(3500),
+    stream: z.boolean().default(true),
   })
-  .strict()
   .refine(
     (s) => new Set(s.controls.map((c) => c.id)).size === s.controls.length,
     "Checklist IDs must be unique",
@@ -61,6 +74,7 @@ export const generationSchema = z
     requestId: z.string().uuid(),
     message: z.string().trim().min(1).max(16000),
     mode: modeSchema,
+    target: targetSchema.default("idea"),
     approach: z.enum(["quick", "clarify"]),
     tool: z.enum([
       "Generic",
@@ -90,6 +104,7 @@ export const draftSchema = z
     refinedIdea: z.string().max(50000),
     implementationPlan: z.string().max(50000),
     executionPrompt: z.string().max(70000),
+    fileStructure: z.string().max(20000).default(""),
     phasePrompts: z
       .array(
         z
@@ -122,6 +137,8 @@ export const exampleSchema = z
   .strict();
 export type Context = z.infer<typeof contextSchema>;
 export type Settings = z.infer<typeof settingsSchema>;
+export type ProviderId = z.infer<typeof providerSchema>;
+export type Target = z.infer<typeof targetSchema>;
 export type Control = z.infer<typeof controlSchema>;
 export type Draft = z.infer<typeof draftSchema>;
 export type GenerationInput = z.infer<typeof generationSchema>;

@@ -83,8 +83,11 @@ async function main() {
       const p = args.indexOf("--provider"),
         m = args.indexOf("--model");
       const settings = db.settings().value;
-      if (p >= 0) settings.provider = providerSchema.parse(args[p + 1]);
-      if (m >= 0) settings.models[settings.provider] = args[m + 1] || "";
+      if (p >= 0) {
+        const first = providerSchema.parse(args[p + 1]);
+        settings.order = [first, ...settings.order.filter((id) => id !== first)];
+      }
+      if (m >= 0) settings.models[settings.order[0]] = args[m + 1] || "";
       db.saveSettings(settings);
       mkdirSync(join(process.cwd(), "data", "evaluations"), {
         recursive: true,
@@ -102,6 +105,7 @@ async function main() {
             requestId: randomUUID(),
             message: example.idea,
             mode: "prompt",
+            target: "idea",
             approach: "quick",
             tool: "Generic",
             exampleIds: [],
@@ -129,6 +133,7 @@ async function main() {
             requestId: randomUUID(),
             message: p.idea,
             mode: "prompt",
+            target: "idea",
             approach: "quick",
             tool: "Generic",
             exampleIds: [],
@@ -148,7 +153,7 @@ async function main() {
         );
       }
       console.log(
-        "Template sanity check only. Use --file with real outputs, or --live --provider groq|openrouter --model MODEL for paid provider evaluation. Quality requires reviewing outputs and implementation outcomes.",
+        "Template sanity check only. Use --file with real outputs, or --live --provider groq|gemini|openrouter|cloudflare|pollinations --model MODEL for paid provider evaluation. Quality requires reviewing outputs and implementation outcomes.",
       );
     }
   } finally {

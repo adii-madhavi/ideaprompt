@@ -6,9 +6,20 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Store } from "../src/lib/db";
 import { generate } from "../src/lib/generate";
-import { availableModels, complete, ProviderError } from "../src/lib/providers";
+import {
+  complete,
+  outputBudget,
+  providerChain,
+  ProviderError,
+} from "../src/lib/providers";
 import { DEFAULT_CONTROLS, defaultSettings } from "../src/lib/checklist";
-import { PROMPT_SECTIONS, reviewCoverage } from "../src/lib/prompts";
+import {
+  PROMPT_SECTIONS,
+  generationMessages,
+  parseDraft,
+  reviewCoverage,
+  structureIssues,
+} from "../src/lib/prompts";
 import { localGuard, body } from "../src/lib/http";
 import {
   generationSchema,
@@ -16,18 +27,6 @@ import {
   type Draft,
   type GenerationInput,
 } from "../src/lib/schema";
-
-const freeModel = {
-  id: "test/model:free",
-  pricing: { prompt: "0", completion: "0", request: "0" },
-  architecture: { output_modalities: ["text"] },
-};
-function withCatalog(inference: typeof fetch): typeof fetch {
-  return async (url, init) =>
-    String(url).endsWith("/models")
-      ? Response.json({ data: [freeModel] })
-      : inference(url, init);
-}
 
 const context = {
   notes: "",
@@ -52,6 +51,7 @@ function setup(path = ":memory:") {
     requestId: randomUUID(),
     message: p.idea,
     mode: "prompt",
+    target: "idea",
     approach: "quick",
     tool: "Generic",
     exampleIds: [],
@@ -63,6 +63,7 @@ function fixture(): Draft {
     kind: "draft",
     refinedIdea: "A static portfolio.",
     implementationPlan: "Use static HTML and CSS.",
+    fileStructure: "```text\nindex.html  # page\n```",
     executionPrompt: PROMPT_SECTIONS.map(
       (s) =>
         `## ${s}\n${s === "Security" ? "Render untrusted content as text. Test that scripts display harmlessly." : "Test fixture requirement."}`,
@@ -335,18 +336,165 @@ test("localhost mutations require same origin and JSON; bodies and clarification
     db.close();
   }
 });
-test("provider streaming handles fragmented UTF-8, SSE comments, terminal markers, privacy controls and errors without leaking provider messages", async () => {
-  const original = globalThis.fetch,
-    oldKey = process.env.OPENROUTER_API_KEY;
-  process.env.OPENROUTER_API_KEY = "test-secret-only";
-  const { db } = setup();
-  const settings = db.settings().value;
-  settings.provider = "openrouter";
-  settings.models.openrouter = "test/model:free";
+const ENV_KEYS = [
+  "GROQ_API_KEY",
+  "GROQ_API_KEY_FALLBACK",
+  "GROQ_MODEL",
+  "GEMINI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_MODEL",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "CLOUDFLARE_API_TOKEN",
+  "POLLINATIONS_API_KEY",
+];
+async function withEnv(vars: Record<string, string>, fn: () => Promise<void>) {
+  const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  const original = globalThis.fetch;
+  for (const k of ENV_KEYS) delete process.env[k];
+  Object.assign(process.env, vars);
   try {
-    let sent: Record<string, unknown> = {};
-    globalThis.fetch = withCatalog(async (_url, init) => {
-      sent = JSON.parse(String(init?.body));
+    await fn();
+  } finally {
+    globalThis.fetch = original;
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+}
+const answer = (content: string) =>
+  Response.json({ choices: [{ message: { content }, finish_reason: "stop" }] });
+const quiet = () => new AbortController().signal;
+
+test("routing skips keyless providers, falls through failures, never lists a catalog, and caps only Groq", async () => {
+  await withEnv(
+    { GROQ_API_KEY: "groq-secret-a", OPENROUTER_API_KEY: "or-secret-a" },
+    async () => {
+      const settings = defaultSettings();
+      settings.stream = false;
+      settings.groqMaxTokens = 3000;
+      const calls: { url: string; body: Record<string, unknown> }[] = [];
+      globalThis.fetch = async (url, init) => {
+        const u = String(url);
+        calls.push({ url: u, body: JSON.parse(String(init?.body ?? "{}")) });
+        return u.includes("groq")
+          ? new Response("bad key groq-secret-a", { status: 401 })
+          : answer("hello");
+      };
+      const status: string[] = [];
+      let route = "";
+      const text = await complete({
+        settings,
+        messages: [
+          { role: "system", content: "s" },
+          { role: "user", content: "u" },
+        ],
+        signal: quiet(),
+        onStatus: (m) => status.push(m),
+        onRoute: (r) => (route = r.provider),
+      });
+      assert.equal(text, "hello");
+      assert.equal(route, "OpenRouter");
+      assert.equal(calls.length, 2, "no catalog request, one call per provider");
+      assert.ok(calls.every((c) => !c.url.endsWith("/models")));
+      assert.ok(calls[0].url.startsWith("https://api.groq.com"));
+      assert.ok((calls[0].body.max_completion_tokens as number) <= 3000);
+      assert.equal(calls[1].body.max_tokens, 16000, "uncapped provider");
+      assert.equal(calls[1].body.provider, undefined, "no restrictive routing");
+      assert.ok(status.some((m) => /Trying OpenRouter/.test(m)));
+      assert.ok(!status.join().includes("groq-secret-a"));
+    },
+  );
+});
+
+test("output budget limits only Groq and skips it when the prompt leaves no room", () => {
+  const env = { GROQ_API_KEY: "g", OPENROUTER_API_KEY: "o" } as unknown as NodeJS.ProcessEnv;
+  const settings = defaultSettings();
+  settings.groqMaxTokens = 7000;
+  const [groq, openrouter] = providerChain(settings, env);
+  const small = [{ role: "user" as const, content: "x".repeat(100) }];
+  const huge = [{ role: "user" as const, content: "x".repeat(40000) }];
+  assert.equal(groq.id, "groq");
+  assert.ok(outputBudget(groq, settings, small) < 7600);
+  assert.throws(
+    () => outputBudget(groq, settings, huge),
+    (e) => e instanceof ProviderError && e.kind === "too_large",
+  );
+  assert.equal(outputBudget(openrouter, settings, huge), 16000);
+  assert.deepEqual(
+    providerChain(settings, { OPENROUTER_API_KEY: "o" } as unknown as NodeJS.ProcessEnv).map(
+      (r) => r.id,
+    ),
+    ["openrouter"],
+    "providers without keys are skipped",
+  );
+  settings.order = ["openrouter", "groq", "gemini", "cloudflare", "pollinations"];
+  assert.equal(providerChain(settings, env)[0].id, "openrouter");
+});
+
+test("a second key takes over after an auth failure, and a short rate limit is waited out", async () => {
+  await withEnv(
+    { GROQ_API_KEY: "key-one", GROQ_API_KEY_FALLBACK: "key-two" },
+    async () => {
+      const settings = defaultSettings();
+      settings.stream = false;
+      const used: string[] = [];
+      globalThis.fetch = async (_url, init) => {
+        const auth = String(
+          (init?.headers as Record<string, string>).Authorization,
+        );
+        used.push(auth);
+        return auth.endsWith("key-one")
+          ? new Response("nope", { status: 401 })
+          : answer("second");
+      };
+      assert.equal(
+        await complete({
+          settings,
+          messages: [{ role: "user", content: "hi" }],
+          signal: quiet(),
+        }),
+        "second",
+      );
+      assert.deepEqual(used, ["Bearer key-one", "Bearer key-two"]);
+    },
+  );
+  await withEnv({ GEMINI_API_KEY: "gem-rate" }, async () => {
+    const settings = defaultSettings();
+    settings.stream = false;
+    let n = 0;
+    globalThis.fetch = async () =>
+      ++n === 1
+        ? new Response("slow down", {
+            status: 429,
+            headers: { "retry-after": "0" },
+          })
+        : answer("after wait");
+    const status: string[] = [];
+    assert.equal(
+      await complete({
+        settings,
+        messages: [{ role: "user", content: "hi" }],
+        signal: quiet(),
+        onStatus: (m) => status.push(m),
+      }),
+      "after wait",
+    );
+    assert.equal(n, 2);
+    assert.ok(status.some((m) => /Waiting/.test(m)));
+  });
+});
+
+test("provider streaming handles fragmented UTF-8, SSE comments and terminal markers, and never leaks keys", async () => {
+  await withEnv({ OPENROUTER_API_KEY: "test-secret-only" }, async () => {
+    const settings = defaultSettings();
+    settings.order = ["openrouter"];
+    const base = {
+      settings,
+      messages: [{ role: "user" as const, content: "Test" }],
+      signal: quiet(),
+    };
+    globalThis.fetch = async () => {
       const encoded = new TextEncoder().encode(
         ': keepalive\r\n\r\ndata: {"choices":[{"delta":{"content":"Hello ₹"},"finish_reason":null}]}\r\n\r\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\r\n\r\ndata: [DONE]\r\n\r\n',
       );
@@ -359,164 +507,104 @@ test("provider streaming handles fragmented UTF-8, SSE comments, terminal marker
           },
         }),
       );
-    });
-    assert.equal(
-      await complete({
-        settings,
-        messages: [{ role: "user", content: "Test" }],
-        signal: new AbortController().signal,
-      }),
-      "Hello ₹",
-    );
-    assert.deepEqual(sent.provider, {
-      data_collection: "deny",
-      zdr: true,
-      allow_fallbacks: false,
-      require_parameters: true,
-      max_price: { prompt: 0, completion: 0, request: 0, image: 0 },
-    });
-    globalThis.fetch = withCatalog(
-      async () =>
-        new Response('data: {"error":{"message":"test-secret-only"}}\n\n'),
-    );
+    };
+    assert.equal(await complete(base), "Hello ₹");
+    globalThis.fetch = async () =>
+      new Response('data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n');
+    await assert.rejects(complete(base), /before completion/);
+    globalThis.fetch = async () =>
+      new Response("key leaked upstream test-secret-only", { status: 401 });
     await assert.rejects(
-      complete({
-        settings,
-        messages: [],
-        signal: new AbortController().signal,
-      }),
+      complete(base),
       (e) =>
         e instanceof Error &&
         !e.message.includes("test-secret-only") &&
-        /interrupted/.test(e.message),
+        /rejected/.test(e.message),
     );
-    globalThis.fetch = withCatalog(
-      async () =>
-        new Response('data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n'),
-    );
+  });
+});
+
+test("no key gives a clear instruction and legacy settings still load", async () => {
+  await withEnv({}, async () => {
+    const settings = defaultSettings();
+    globalThis.fetch = async () => {
+      throw new Error("must not be called");
+    };
     await assert.rejects(
-      complete({
+      complete({ settings, messages: [], signal: quiet() }),
+      /.env/,
+    );
+  });
+  const legacy = {
+    provider: "groq",
+    models: { groq: "openai/gpt-oss-20b", openrouter: "" },
+    preferences: defaultSettings().preferences,
+    controls: DEFAULT_CONTROLS,
+    maxTokens: 7000,
+    stream: true,
+    openRouterZdr: true,
+    groqFreePlanConfirmed: false,
+  };
+  const parsed = settingsSchema.parse(legacy);
+  assert.equal(parsed.groqMaxTokens, 3500);
+  assert.equal(parsed.models.groq, "openai/gpt-oss-20b");
+  assert.deepEqual(
+    settingsSchema.parse({ ...legacy, order: ["gemini", "gemini"] }).order,
+    ["gemini", "groq", "openrouter", "cloudflare", "pollinations"],
+  );
+});
+
+test("plans carry a file structure and follow the website or raw-idea target", () => {
+  const { db, input } = setup();
+  try {
+    const project = db.project(input.projectId)!;
+    const settings = db.settings().value;
+    const text = (target: "website" | "idea") =>
+      generationMessages(
+        { ...input, target, mode: "plan" },
+        project,
         settings,
-        messages: [],
-        signal: new AbortController().signal,
-      }),
-      /before completion/,
-    );
-    globalThis.fetch = withCatalog(
-      async () => new Response("key leaked upstream", { status: 401 }),
-    );
-    await assert.rejects(
-      complete({
-        settings,
-        messages: [],
-        signal: new AbortController().signal,
-      }),
-      /rejected the API key/,
-    );
+        [],
+        [],
+      )[0].content;
+    assert.match(text("website"), /Planning target: WEBSITE/);
+    assert.match(text("idea"), /Planning target: RAW IDEA/);
+    assert.match(text("idea"), /"fileStructure"/);
+    const bare = { ...fixture(), fileStructure: "" };
+    assert.deepEqual(structureIssues(bare, "plan"), ["Missing file structure"]);
+    const raw = JSON.stringify({
+      ...fixture(),
+      fileStructure: "",
+      executionPrompt: "",
+      implementationPlan:
+        "## Steps\nDo it.\n\n## File structure\n```text\napp/  # code\n```\n\n## Risks\nNone.",
+    });
+    assert.equal(parseDraft(raw).fileStructure, "```text\napp/  # code\n```");
   } finally {
-    globalThis.fetch = original;
-    if (oldKey === undefined) delete process.env.OPENROUTER_API_KEY;
-    else process.env.OPENROUTER_API_KEY = oldKey;
     db.close();
   }
 });
 
-test("free-only catalog and inference reject paid, unknown-priced, non-chat and stale models before sending ideas", async () => {
-  const original = globalThis.fetch,
-    oldKey = process.env.OPENROUTER_API_KEY;
-  process.env.OPENROUTER_API_KEY = "test-secret-only";
-  const settings = defaultSettings();
-  settings.provider = "openrouter";
-  let catalog = [
-    freeModel,
-    {
-      ...freeModel,
-      id: "test/paid:free",
-      pricing: { prompt: "0.01", completion: "0" },
-    },
-    { ...freeModel, id: "test/unknown:free", pricing: {} },
-    {
-      ...freeModel,
-      id: "test/fee:free",
-      pricing: { ...freeModel.pricing, request: "0.01" },
-    },
-    {
-      ...freeModel,
-      id: "test/audio:free",
-      architecture: { output_modalities: ["audio"] },
-    },
-    { ...freeModel, id: "openrouter/free" },
-    { ...freeModel, id: "openrouter/auto" },
-  ];
-  let inferenceCalls = 0;
-  try {
-    globalThis.fetch = async (url) => {
-      if (String(url).endsWith("/models"))
-        return Response.json({ data: catalog });
-      inferenceCalls++;
-      throw new Error("An excluded model must never reach inference");
-    };
-    assert.deepEqual(
-      await availableModels(settings, new AbortController().signal),
-      [freeModel.id],
-    );
-    for (const id of catalog
-      .slice(1)
-      .map((m) => m.id)
-      .concat("old/paid-model")) {
-      settings.models.openrouter = id;
-      await assert.rejects(
-        complete({
-          settings,
-          messages: [],
-          signal: new AbortController().signal,
-        }),
-        /free chat catalog|Automatic model routing/,
+test("a draft from a token-limited provider skips the second pass and records who answered", async () => {
+  for (const limited of [true, false]) {
+    const { db, input } = setup();
+    try {
+      let calls = 0;
+      await generate(
+        db,
+        input,
+        quiet(),
+        () => {},
+        async (o) => {
+          calls++;
+          o.onRoute?.({ id: "groq", provider: "Groq", model: "m", limited });
+          return JSON.stringify(fixture());
+        },
       );
+      assert.equal(calls, limited ? 1 : 2);
+      assert.equal(db.versions(input.projectId)[0].provider, "Groq");
+    } finally {
+      db.close();
     }
-    settings.models.openrouter = freeModel.id;
-    catalog = [
-      {
-        ...freeModel,
-        pricing: { prompt: "0", completion: "0.01", request: "0" },
-      },
-    ];
-    await assert.rejects(
-      complete({
-        settings,
-        messages: [],
-        signal: new AbortController().signal,
-      }),
-      /free chat catalog/,
-    );
-    globalThis.fetch = async () => {
-      throw new Error("Catalog unavailable");
-    };
-    await assert.rejects(
-      complete({
-        settings,
-        messages: [],
-        signal: new AbortController().signal,
-      }),
-      /model catalog/,
-    );
-    assert.equal(inferenceCalls, 0);
-    const { groqFreePlanConfirmed: _removed, ...legacy } = defaultSettings();
-    assert.equal(_removed, false);
-    assert.equal(settingsSchema.parse(legacy).groqFreePlanConfirmed, false);
-    settings.provider = "groq";
-    settings.models.groq = "openai/gpt-oss-20b";
-    await assert.rejects(
-      complete({
-        settings,
-        messages: [],
-        signal: new AbortController().signal,
-      }),
-      /Confirm your Groq organization/,
-    );
-  } finally {
-    globalThis.fetch = original;
-    if (oldKey === undefined) delete process.env.OPENROUTER_API_KEY;
-    else process.env.OPENROUTER_API_KEY = oldKey;
   }
 });

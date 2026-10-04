@@ -125,16 +125,11 @@ export const DEFAULT_CONTROLS: Control[] = [
 ];
 export function defaultSettings(): Settings {
   return {
-    provider: "groq",
-    models: {
-      groq: process.env.GROQ_MODEL || "",
-      openrouter: process.env.OPENROUTER_MODEL || "",
-    },
+    order: ["groq", "gemini", "openrouter", "cloudflare", "pollinations"],
+    models: {},
     preferences: { stack: "", style: "", budget: "", hosting: "" },
     controls: DEFAULT_CONTROLS,
-    maxTokens: 7000,
+    groqMaxTokens: 3500,
     stream: true,
-    openRouterZdr: true,
-    groqFreePlanConfirmed: false,
   };
 }

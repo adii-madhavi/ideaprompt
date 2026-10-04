@@ -1,10 +1,10 @@
 import { api, body, rateLimit, HttpError } from "@/lib/http";
 import { store } from "@/lib/db";
 import {
-  availableModels,
   complete,
+  listModels,
+  PROVIDERS,
   ProviderError,
-  selectedModel,
 } from "@/lib/providers";
 import { providerSchema } from "@/lib/schema";
 import { z } from "zod";
@@ -22,25 +22,33 @@ export async function POST(request: Request) {
     );
     rateLimit();
     const settings = store().settings().value;
-    settings.provider = input.provider;
-    if (input.model !== undefined)
-      settings.models[input.provider] = input.model;
+    // The connection test only needs any answer, so it uses the provider's cheapest model.
+    const model =
+      input.action === "test"
+        ? PROVIDERS[input.provider].testModel || input.model
+        : input.model;
+    if (model !== undefined)
+      settings.models = { ...settings.models, [input.provider]: model };
     try {
       if (input.action === "models")
-        return { models: await availableModels(settings, request.signal) };
+        return { models: await listModels(input.provider, request.signal) };
+      let used = "";
       await complete({
         settings,
+        only: input.provider,
         messages: [
           { role: "user", content: "Respond with the word Connected." },
         ],
-        maxTokens: 256,
+        maxTokens: 1024,
+        streaming: false,
         signal: request.signal,
+        onRoute: (route) => (used = route.model),
       });
       return {
         ok: true,
-        provider: settings.provider,
-        model: selectedModel(settings),
-        message: "Connection verified with a small real inference request.",
+        provider: input.provider,
+        model: used,
+        message: `Connection verified: ${input.provider} answered with ${used}.`,
       };
     } catch (error) {
       throw new HttpError(

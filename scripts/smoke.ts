@@ -43,15 +43,15 @@ async function main() {
     const exported = await (await call("/api/data")).json();
     assert.ok(exported.projects.some((p: { id: string }) => p.id === id));
     const settings = await (await call("/api/settings")).json();
-    const provider = settings.value.provider;
-    if (!settings.connected[provider]) {
+    const provider = settings.value.order[0];
+    if (!Object.values(settings.connected).some(Boolean)) {
       const test = await call("/api/provider", "POST", {
         action: "test",
         provider,
         model: "test-unavailable-model",
       });
       assert.equal(test.status, 502);
-      assert.match((await test.json()).error, /\.env.local/);
+      assert.match((await test.json()).error, /\.env/);
       const generate = await call("/api/generate", "POST", {
         projectId: id,
         requestId: randomUUID(),

@@ -1,9 +1,10 @@
 import {
   complete,
-  selectedModel,
-  credentials,
+  providerChain,
+  noRouteMessage,
   ProviderError,
   type CompleteOptions,
+  type RouteInfo,
 } from "./providers";
 import {
   generationMessages,
@@ -26,8 +27,9 @@ export async function generate(
   const project = db.project(input.projectId);
   if (!project) throw new HttpError(404, "Project not found.");
   const { value: settings, checklistVersion } = db.settings();
-  const model = selectedModel(settings);
-  if (call === complete) credentials(settings.provider);
+  const chain = providerChain(settings);
+  if (call === complete && !chain.length)
+    throw new HttpError(400, noRouteMessage(settings));
   const selected = db
     .examples()
     .filter(
@@ -53,12 +55,28 @@ export async function generate(
     chars += text.length;
     emit({ type: "progress", characters: chars });
   };
+  const onStatus = (message: string) => emit({ type: "status", message });
+  // The provider that answered last is the one recorded on the saved version.
+  let used: RouteInfo = {
+    id: chain[0]?.id ?? "groq",
+    provider: chain[0]?.label ?? "custom",
+    model: chain[0]?.model ?? "custom",
+    limited: false,
+  };
+  const options = (messages: CompleteOptions["messages"]): CompleteOptions => ({
+    settings,
+    messages,
+    signal,
+    onChunk,
+    onStatus,
+    onRoute: (route) => (used = route),
+  });
   try {
     emit({
       type: "status",
-      message: `Drafting with ${settings.provider} · ${model}`,
-      provider: settings.provider,
-      model,
+      message: chain.length
+        ? `Drafting with ${chain.map((r) => r.label).join(" → ")}`
+        : "Drafting…",
     });
     const messages = generationMessages(
       input,
@@ -67,7 +85,7 @@ export async function generate(
       db.messages(project.id, 8),
       selected,
     );
-    const raw = await call({ settings, messages, signal, onChunk });
+    const raw = await call(options(messages));
     signal.throwIfAborted();
     let parsed;
     try {
@@ -75,22 +93,27 @@ export async function generate(
     } catch {
       /* The review pass also repairs malformed model output. */
     }
-    if (parsed?.kind !== "questions") {
+    // A provider with a small per-minute allowance cannot afford a second full pass, so a draft that
+    // already parses and has its structure is kept as it is.
+    const clean =
+      parsed &&
+      parsed.kind === "draft" &&
+      used.limited &&
+      !structureIssues(parsed, input.mode).length;
+    if (parsed?.kind !== "questions" && !clean) {
       emit({
         type: "status",
         message: "Reviewing requirements and repairing checklist omissions…",
       });
-      const reviewed = await call({
-        settings,
-        messages: reviewMessages(messages, raw, settings.controls, input.mode),
-        signal,
-        onChunk,
-      });
+      const reviewed = await call(
+        options(reviewMessages(messages, raw, settings.controls, input.mode)),
+      );
       try {
         parsed = parseDraft(reviewed);
       } catch {
         throw new ProviderError(
-          "The model returned invalid structured output after review. Try a different model or a larger token limit.",
+          "The model returned invalid structured output after review. Try a different provider or model.",
+          "invalid_output",
         );
       }
     }
@@ -104,7 +127,7 @@ export async function generate(
       );
     const draft = reviewCoverage(parsed, settings.controls, input.mode);
     signal.throwIfAborted();
-    db.finishRun(input, draft, settings, checklistVersion, model);
+    db.finishRun(input, draft, used.provider, checklistVersion, used.model);
     emit({ type: "complete", draft });
     return draft;
   } catch (error) {

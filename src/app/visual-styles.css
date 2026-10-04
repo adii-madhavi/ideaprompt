@@ -92,3 +92,185 @@
 @media (prefers-reduced-motion: reduce) {
   .scene-intro *, .style-empty-visual * { animation: none !important; transition: none !important; }
 }
+/* ---- Left panel: glassy, matte, scrollbar-free, truncated names with a tooltip. ---- */
+.app-shell[data-visual-style="terminal"]::before {
+  content: "";
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 560px;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(360px 300px at 30px 10%, #f0787e38, transparent 70%),
+    radial-gradient(320px 380px at 190px 82%, #f0787e22, transparent 72%);
+}
+.app-shell[data-visual-style="terminal"] aside.sidebar {
+  background: linear-gradient(180deg, rgba(34, 26, 30, 0.56), rgba(14, 13, 15, 0.7));
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  border-right: 1px solid rgba(240, 120, 126, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset -1px 0 0 rgba(255, 255, 255, 0.03), 22px 0 44px -30px #000;
+  overflow: hidden;
+}
+/* Fine grain keeps the glass matte instead of shiny. */
+.app-shell[data-visual-style="terminal"] aside.sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+.app-shell[data-visual-style="terminal"] aside.sidebar > * { position: relative; z-index: 1; }
+.app-shell[data-visual-style="terminal"] .new-project,
+.app-shell[data-visual-style="terminal"] .sidebar-search {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(240, 120, 126, 0.22);
+}
+.app-shell[data-visual-style="terminal"] .project-list > button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); }
+.app-shell[data-visual-style="terminal"] .project-list > button.active { background: rgba(240, 120, 126, 0.12); border-color: rgba(240, 120, 126, 0.32); }
+.project-list {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.project-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.app-shell .project-list > button > div { min-width: 0; flex: 1; }
+.app-shell .project-list > button > svg { flex-shrink: 0; }
+.app-shell .project-list strong,
+.app-shell .project-list span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-tip {
+  position: fixed;
+  z-index: 80;
+  max-width: 320px;
+  padding: 7px 10px;
+  background: #1a1316;
+  border: 1px solid #684249;
+  color: #f1e9ea;
+  font: 500 11px/1.4 "IBM Plex Mono", monospace;
+  box-shadow: 0 10px 28px -8px #000;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Sliding planning target switch. ---- */
+.target-switch { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.target-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 214px;
+  height: 34px;
+  padding: 3px;
+  background: #0d0d10;
+  border: 1px solid #49363b;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: "IBM Plex Mono", monospace;
+}
+.target-track:disabled { opacity: 0.6; cursor: default; }
+.target-track:focus-visible { outline: 2px solid #f0787e; outline-offset: 2px; }
+.target-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / 2);
+  background: #f0787e;
+  transition: transform 0.28s cubic-bezier(0.4, 0.1, 0.2, 1);
+}
+.target-switch[data-target="website"] .target-thumb { transform: translateX(100%); }
+.target-option {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: #bcaeb1;
+  transition: color 0.2s;
+}
+.target-option[data-on="true"] { color: #101012; font-weight: 600; }
+.target-note { font-size: 11px; color: #bcaeb1; font-family: "IBM Plex Mono", monospace; }
+@media (prefers-reduced-motion: reduce) { .target-thumb, .target-option { transition: none; } }
+
+/* ---- Settings: provider routing list. ---- */
+.route-list { list-style: none; margin: 14px 0; padding: 0; display: grid; gap: 12px; }
+.route { border: 1px solid var(--border); padding: 14px; background: rgba(255, 255, 255, 0.02); }
+.route.ready { border-color: #684249; }
+.route-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.route-rank { font: 600 11px "IBM Plex Mono", monospace; color: var(--purple); }
+.route-moves { margin-left: auto; display: flex; gap: 6px; }
+.route .button-row { margin-top: 8px; }
+
+/* ---- Dialogs and settings in the same red-and-black palette as the rest of the app. ---- */
+.modal {
+  background: #121013;
+  color: #e9e4e5;
+  border: 1px solid #49363b;
+  border-radius: 2px;
+  box-shadow: 0 24px 80px #000c;
+}
+.modal::backdrop { background: #000a; backdrop-filter: blur(4px); }
+.modal-head { border-bottom-color: #343034; background: #181417; }
+.modal-head h2 { color: #f0787e; font-family: "IBM Plex Mono", monospace; font-size: 18px; letter-spacing: -0.02em; }
+.modal-head .eyebrow { color: #bcaeb1; }
+.modal-footer { background: #181417; border-top: 1px solid #343034; }
+.settings-tabs { border-bottom: 1px solid #343034; }
+.settings-tabs button { color: #bcaeb1; font-family: "IBM Plex Mono", monospace; }
+.settings-tabs button[aria-current="page"] { color: #f0787e; border-bottom-color: #f0787e; }
+.settings-body h3, .modal h3 { color: #ede8e9; }
+.modal :is(.muted, .help, .settings-body .help, .modal-footer .help) { color: #bcaeb1; }
+.modal a, .modal .text-link { color: #f28b91; }
+.modal code { background: #271a1f; color: #f5b5b9; border-radius: 2px; padding: 1px 5px; }
+.modal :is(input, textarea, select) {
+  background: #0d0d10;
+  border: 1px solid #443239;
+  border-radius: 2px;
+  color: #e9e3e5;
+}
+.modal :is(input, textarea, select):focus-visible { outline: 2px solid #f0787e; outline-offset: 1px; }
+.modal :is(input, textarea)::placeholder { color: #9d8e93; }
+.modal .field { color: #d6c9cd; }
+.modal .check-field { color: #d6c9cd; }
+.modal input[type="checkbox"] { accent-color: #f0787e; }
+.modal .secondary, .modal .icon-button { background: #21171c; border: 1px solid #49383e; color: #e0d3d7; border-radius: 2px; }
+.modal .secondary:hover:not(:disabled), .modal .icon-button:hover:not(:disabled) { border-color: #f0787e; color: #f0787e; }
+.modal .primary { background: #f0787e; border-color: #f0787e; color: #101012; border-radius: 2px; }
+.modal .info-box { background: #1a1316; border: 1px solid #49363b; border-radius: 2px; color: #d6c9cd; }
+.modal .info-box strong { color: #ede8e9; }
+.modal .info-box p { color: #bcaeb1; }
+.modal .connection { color: #bcaeb1; }
+.modal .connection::before { background: #7a6a6f; }
+.modal .connection.yes { color: #f0787e; }
+.modal .connection.yes::before { background: #f0787e; }
+.modal .notice { border-radius: 2px; background: #1a1316; border: 1px solid #49363b; color: #e9e3e5; }
+.modal .notice.error { border-color: #a4444c; background: #2a1519; color: #ffb4b8; }
+.modal :is(details, .example-item, .control-item, .history-item) { background: #151215; border-color: #343034; color: #d6c9cd; }
+.route { background: #151215; }
+.route-rank { color: #f0787e; }
+
+/* ---- Remaining light surfaces → dark. ---- */
+.app-shell[data-visual-style="terminal"] :is(.output-footer, .version-bar, .generation-footer, .paper, .paper-back, .art-end, .stream-status, .conversation-message, .conversation-message.user, .coverage-item, .phase-prompt, .assumptions, .context-details, .starter-row button, .segmented, .segmented .active, .provider-symbol, .mode-icon, .info-box, .notice, .toast, .sidebar-empty, .little-note, .local-user, .coverage-status, .assumptions summary > span, .field input, .field textarea, .field select, .secondary, .icon-button) {
+  background: #141114;
+  color: #e3dadd;
+  border-color: #343034;
+}
+.app-shell[data-visual-style="terminal"] :is(.output-footer, .version-bar) { background: #181417; border-top: 1px solid #343034; }
+.app-shell[data-visual-style="terminal"] .conversation-message.user { background: #1b1519; }
+.app-shell[data-visual-style="terminal"] .segmented .active { background: #2b1a20; color: #f0787e; }
+.app-shell[data-visual-style="terminal"] .markdown pre { background: #0d0d10; color: #e9e3e5; border: 1px solid #343034; }
+.app-shell[data-visual-style="terminal"] .notice.error { background: #2a1519; color: #ffb4b8; border-color: #a4444c; }
+.app-shell[data-visual-style="terminal"] .coverage-status.specified { background: #14231b; color: #8fd0a8; }
+.app-shell[data-visual-style="terminal"] .coverage-status.missing { background: #2a1d12; color: #f0b27a; }
+.app-shell[data-visual-style="terminal"] :is(.output-footer, .version-bar) :is(.text-button, .help, span, small, button) { color: #c3b4b7; }
+.app-shell[data-visual-style="terminal"] .topbar { background: rgba(16, 16, 18, 0.75); }
+.app-shell[data-visual-style="terminal"] .markdown :is(p, li, td) { color: #ddd5d8; }
+.app-shell[data-visual-style="terminal"] .output-footer .secondary:hover:not(:disabled),
+.app-shell[data-visual-style="terminal"] .icon-button:hover:not(:disabled) { border-color: #f0787e; color: #f0787e; }

@@ -41,6 +41,7 @@ const TABS = [
   "Refined idea",
   "Implementation",
   "Execution prompt",
+  "File structure",
   "Coverage",
 ] as const;
 const EMPTY_CONTEXT: Context = {
@@ -65,6 +66,11 @@ const STARTERS = [
     idea: "I want to improve an existing app. Help me define the change, inspect the current implementation, and plan a focused update that preserves the rest of the project.",
   },
 ];
+/** The file tree is plain text; show it as a code block even when the model left the fence off. */
+function fenced(tree?: string) {
+  if (!tree?.trim()) return "";
+  return tree.includes("```") ? tree : "```text\n" + tree.trim() + "\n```";
+}
 type Detail = { project: Project; versions: Version[]; messages: Message[] };
 export default function Workspace() {
 
@@ -81,6 +87,7 @@ export default function Workspace() {
     [messages, setMessages] = useState<Message[]>([]),
     [versionId, setVersionId] = useState("");
   const [mode, setMode] = useState<"refine" | "plan" | "prompt">("prompt"),
+    [target, setTarget] = useState<"website" | "idea">("idea"),
     [approach, setApproach] = useState<"quick" | "clarify">("quick"),
     [tool, setTool] = useState("Generic");
   const [tab, setTab] = useState<(typeof TABS)[number]>("Execution prompt"),
@@ -111,6 +118,14 @@ export default function Workspace() {
   const controller = useRef<AbortController | null>(null),
     generationLock = useRef(false),
     activeProject = useRef<string | null>(null);
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
+  /** Shows the full name beside the row, but only when the name is actually cut off. */
+  function showTip(row: HTMLElement, text: string) {
+    const name = row.querySelector("strong");
+    if (!name || name.scrollWidth <= name.clientWidth) return;
+    const box = row.getBoundingClientRect();
+    setTip({ text, x: box.right + 10, y: box.top });
+  }
   const sidebarRef = useRef<HTMLElement>(null), menuRef = useRef<HTMLButtonElement>(null), menuWasOpen = useRef(false);
   useEffect(() => {
     if (showSidebar) { sidebarRef.current?.querySelector("button")?.focus(); menuWasOpen.current = true; }
@@ -127,7 +142,9 @@ export default function Workspace() {
       ? draft?.refinedIdea
       : tab === "Implementation"
         ? draft?.implementationPlan
-        : draft?.executionPrompt;
+        : tab === "File structure"
+          ? fenced(draft?.fileStructure)
+          : draft?.executionPrompt;
   const reloadSettings = useCallback(async () => {
     setSettings(await request<SettingsResponse>("/api/settings"));
   }, []);
@@ -234,12 +251,11 @@ export default function Workspace() {
   }
   async function runGeneration(customMessage?: string) {
     if (generationLock.current || !idea.trim()) return;
-    if (
-      !settings?.value.models[settings.value.provider] ||
-      !settings.connected[settings.value.provider]
-    ) {
+    if (!settings?.providers.some((p) => p.hasKey && p.model)) {
       setShowSettings(true);
-      setError("Set up a server key and choose a model before generating.");
+      setError(
+        "No provider is ready. Add an API key to .env, restart the server, and check Settings.",
+      );
       return;
     }
     generationLock.current = true;
@@ -267,6 +283,7 @@ export default function Workspace() {
           requestId: crypto.randomUUID(),
           message,
           mode,
+          target,
           approach,
           tool,
           exampleIds: selectedExamples,
@@ -384,6 +401,8 @@ export default function Workspace() {
         `# Implementation plan\n\n${draft.implementationPlan}`,
       draft.executionPrompt &&
         `# Master execution prompt\n\n${draft.executionPrompt}`,
+      draft.fileStructure &&
+        `# File structure\n\n${fenced(draft.fileStructure)}`,
       ...draft.phasePrompts.map((p) => `# ${p.title}\n\n${p.prompt}`),
       draft.assumptions.length &&
         `# Labeled assumptions\n\n${draft.assumptions.map((a) => "- " + a).join("\n")}`,
@@ -421,6 +440,9 @@ export default function Workspace() {
       setError((e as Error).message);
     }
   }
+  const readyRoutes = (settings?.providers ?? []).filter(
+    (p) => p.hasKey && p.model,
+  );
   const covered =
     draft?.coverage.filter((c) => c.status === "specified").length || 0;
   return (
@@ -463,7 +485,11 @@ export default function Workspace() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
-        <nav className="project-list" aria-label="Saved projects">
+        <nav
+          className="project-list"
+          aria-label="Saved projects"
+          onScroll={() => setTip(null)}
+        >
           {projects
             .filter((p) =>
               (p.title + p.idea).toLowerCase().includes(search.toLowerCase()),
@@ -473,6 +499,10 @@ export default function Workspace() {
                 disabled={busy}
                 key={p.id}
                 className={project?.id === p.id ? "active" : ""}
+                onMouseEnter={(e) => showTip(e.currentTarget, p.title)}
+                onFocus={(e) => showTip(e.currentTarget, p.title)}
+                onMouseLeave={() => setTip(null)}
+                onBlur={() => setTip(null)}
                 onClick={() => loadProject(p.id)}
               >
                 <Icon name="folder" size={17} />
@@ -530,6 +560,11 @@ export default function Workspace() {
           </div>
         </div>
       </aside>
+      {tip && (
+        <div className="sidebar-tip" role="tooltip" style={{ top: tip.y, left: tip.x }}>
+          {tip.text}
+        </div>
+      )}
       <main className="main">
         <header className="topbar">
           <div className="breadcrumbs">
@@ -569,6 +604,33 @@ export default function Workspace() {
         </header>
         <div className="page-content">
           <TerminalIntro paused={motionPaused} />
+          <div className="target-switch" data-target={target}>
+            <span className="small-label" id="target-label">
+              PLANNING FOR
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={target === "website"}
+              aria-labelledby="target-label"
+              disabled={busy}
+              className="target-track"
+              onClick={() => setTarget(target === "website" ? "idea" : "website")}
+            >
+              <span className="target-thumb" aria-hidden="true" />
+              <span className="target-option" data-on={target === "idea"}>
+                Raw idea
+              </span>
+              <span className="target-option" data-on={target === "website"}>
+                Website
+              </span>
+            </button>
+            <span className="target-note">
+              {target === "website"
+                ? "Pages, sections, components and a site file tree."
+                : "Any idea: app, tool, service or plan. No website assumed."}
+            </span>
+          </div>
           <div className="mode-grid" aria-label="Choose a mode">
             {MODES.map((m, i) => (
               <button
@@ -837,27 +899,27 @@ export default function Workspace() {
                 <div className="generation-footer">
                   <div className="provider-line">
                     <span className="provider-symbol">
-                      {settings?.value.provider === "openrouter" ? "O" : "G"}
+                      {(readyRoutes[0]?.label ?? "?").slice(0, 1)}
                     </span>
                     <div>
                       <strong>
-                        {settings?.value.provider === "openrouter"
-                          ? "OpenRouter"
-                          : "Groq"}
+                        {readyRoutes.length
+                          ? readyRoutes.map((r) => r.label).join(" → ")
+                          : "No provider ready"}
                         <span> · </span>
                         <span>
-                          {settings?.value.models[settings.value.provider] ||
-                            "Choose a model"}
+                          {readyRoutes[0]?.model || "Add a key in .env"}
                         </span>
                       </strong>
                       <span>
-                        Ideas & selected context are sent to this provider.
+                        Ideas & selected context are sent to the first provider
+                        that answers.
                       </span>
                     </div>
                     <button
                       disabled={busy || !settings}
                       className="icon-button"
-                      aria-label="Configure provider and model"
+                      aria-label="Configure providers and models"
                       onClick={() => setShowSettings(true)}
                     >
                       <Icon name="settings" size={16} />
@@ -1000,7 +1062,9 @@ export default function Workspace() {
                     onKeyDown={(e) => {
                       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
                         e.preventDefault();
-                        const next = (i + (e.key === "ArrowRight" ? 1 : 3)) % 4;
+                        const next =
+                          (i + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) %
+                          TABS.length;
                         setTab(TABS[next]);
                         document.getElementById(`tab-${next}`)?.focus();
                       }
@@ -1603,7 +1667,9 @@ export default function Workspace() {
                     ? "refinedIdea"
                     : tab === "Implementation"
                       ? "implementationPlan"
-                      : "executionPrompt";
+                      : tab === "File structure"
+                        ? "fileStructure"
+                        : "executionPrompt";
                 const newDraft: Draft = {
                   ...selectedVersion.draft,
                   [key]: artifactText,

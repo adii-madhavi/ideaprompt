@@ -1,12 +1,29 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { Settings, Example, Control } from "@/lib/schema";
+import type {
+  Settings,
+  Example,
+  Control,
+  ProviderId,
+} from "@/lib/schema";
 import { DEFAULT_CONTROLS } from "@/lib/checklist";
 import { Icon, Modal, request, download } from "./ui";
 export type SettingsResponse = {
   value: Settings;
   checklistVersion: number;
-  connected: Record<"groq" | "openrouter", boolean>;
+  connected: Record<ProviderId, boolean>;
+  providers: {
+    id: ProviderId;
+    label: string;
+    note: string;
+    keyEnv: string[];
+    keyUrl: string;
+    hasKey: boolean;
+    hasFallbackKey: boolean;
+    defaultModel: string;
+    model: string;
+    limited: boolean;
+  }[];
   checklistHistory: {
     version: number;
     controls: Control[];
@@ -34,13 +51,10 @@ export function SettingsModal({
   const [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
-  const [catalog, setCatalog] = useState<{
-    provider: Settings["provider"];
-    models: string[];
-    error?: string;
-  } | null>(null);
-  const [catalogRefresh, setCatalogRefresh] = useState(0),
-    [query, setQuery] = useState("");
+  const [catalogs, setCatalogs] = useState<
+    Partial<Record<ProviderId, { id: string; free: boolean }[]>>
+  >({});
+  const [query, setQuery] = useState("");
   const [editingExample, setEditingExample] = useState<Example | null>(null);
   const [exampleTitle, setExampleTitle] = useState(""),
     [exampleContent, setExampleContent] = useState("");
@@ -56,32 +70,36 @@ export function SettingsModal({
       setBusy(false);
     }
   }
-  const provider = value.provider;
-  const loadingModels = catalog?.provider !== provider;
-  const models = catalog?.provider === provider ? catalog.models : [];
+  const [loadingModels, setLoadingModels] = useState<ProviderId[]>([]);
+  const [modelErrors, setModelErrors] = useState<
+    Partial<Record<ProviderId, string>>
+  >({});
+  async function fetchModels(id: ProviderId) {
+    setLoadingModels((l) => [...l, id]);
+    try {
+      const r = await request<{ models: { id: string; free: boolean }[] }>(
+        "/api/provider",
+        "POST",
+        { action: "models", provider: id },
+      );
+      setCatalogs((c) => ({ ...c, [id]: r.models }));
+      setModelErrors((e) => ({ ...e, [id]: undefined }));
+    } catch (e) {
+      setModelErrors((m) => ({ ...m, [id]: (e as Error).message }));
+    } finally {
+      setLoadingModels((l) => l.filter((x) => x !== id));
+    }
+  }
+  // Every provider that has a key lists its models as soon as Settings opens.
   useEffect(() => {
-    let current = true;
-    request<{ models: string[] }>("/api/provider", "POST", {
-      action: "models",
-      provider,
-    })
-      .then((response) => {
-        if (current)
-          setCatalog({
-            provider,
-            models: [...new Set(response.models)]
-              .filter((model) => model !== "openrouter/auto")
-              .sort(),
-          });
-      })
-      .catch((e) => {
-        if (current)
-          setCatalog({ provider, models: [], error: (e as Error).message });
-      });
-    return () => {
-      current = false;
-    };
-  }, [provider, catalogRefresh]);
+    for (const info of current.providers) if (info.hasKey) void fetchModels(info.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const moveProvider = (index: number, by: -1 | 1) => {
+    const order = [...value.order];
+    [order[index], order[index + by]] = [order[index + by], order[index]];
+    setValue({ ...value, order });
+  };
   const updateControl = (id: string, update: Partial<Control>) =>
     setValue({
       ...value,
@@ -109,245 +127,175 @@ export function SettingsModal({
       <div className="settings-body">
         {tab === "Connections" && (
           <>
-            <h3>Free models only.</h3>
+            <h3>Provider routing.</h3>
             <p className="muted">
-              Keys stay on your server. Only this connection receives the ideas
-              and context you choose to send.
+              Providers are tried top to bottom and the first one that answers
+              wins. A provider with no key or no model is skipped. Keys live in{" "}
+              <code>.env</code> on your server, never in the browser.
             </p>
-            <div className="provider-choices">
-              {(["groq", "openrouter"] as const).map((p) => (
-                <button
-                  key={p}
-                  className={provider === p ? "selected" : ""}
-                  onClick={() => {
-                    setValue({ ...value, provider: p });
-                    if (p !== provider) setCatalog(null);
-                  }}
-                >
-                  <strong>{p === "groq" ? "Groq" : "OpenRouter"}</strong>
-                  <span
-                    className={
-                      current.connected[p] ? "connection yes" : "connection"
-                    }
-                  >
-                    {current.connected[p]
-                      ? "Server key configured"
-                      : "Server key needed"}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <label className="field">
-              Model
-              <select
-                value={
-                  models.includes(value.models[provider])
-                    ? value.models[provider]
-                    : ""
-                }
-                disabled={busy || loadingModels || models.length === 0}
+            <ol className="route-list">
+              {value.order.map((id, index) => {
+                const info = current.providers.find((p) => p.id === id);
+                if (!info) return null;
+                const chosen = value.models[id] ?? "";
+                const ready =
+                  info.hasKey && Boolean(chosen.trim() || info.defaultModel);
+                return (
+                  <li key={id} className={`route ${ready ? "ready" : ""}`}>
+                    <div className="route-head">
+                      <span className="route-rank">{index + 1}</span>
+                      <strong>{info.label}</strong>
+                      <span className={ready ? "connection yes" : "connection"}>
+                        {!info.hasKey
+                          ? "Key needed"
+                          : ready
+                            ? "Ready"
+                            : "Pick a model"}
+                      </span>
+                      <span className="route-moves">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={`Move ${info.label} up`}
+                          disabled={index === 0}
+                          onClick={() => moveProvider(index, -1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={`Move ${info.label} down`}
+                          disabled={index === value.order.length - 1}
+                          onClick={() => moveProvider(index, 1)}
+                        >
+                          ↓
+                        </button>
+                      </span>
+                    </div>
+                    <label className="field">
+                      Model
+                      <select
+                        value={chosen}
+                        disabled={busy || !info.hasKey}
+                        onChange={(e) =>
+                          setValue({
+                            ...value,
+                            models: { ...value.models, [id]: e.target.value },
+                          })
+                        }
+                      >
+                        <option value="">
+                          {info.defaultModel
+                            ? `Default (${info.defaultModel})`
+                            : loadingModels.includes(id)
+                              ? "Loading models…"
+                              : "Select a model"}
+                        </option>
+                        {chosen && !(catalogs[id] ?? []).some((m) => m.id === chosen) && (
+                          <option value={chosen}>{chosen}</option>
+                        )}
+                        {(catalogs[id] ?? []).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.id}
+                            {m.free ? " · free" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {loadingModels.includes(id) && (
+                      <p className="help" role="status">
+                        Fetching {info.label} models…
+                      </p>
+                    )}
+                    {modelErrors[id] && (
+                      <p className="notice error" role="alert">
+                        {modelErrors[id]}
+                      </p>
+                    )}
+                    {info.limited && (
+                      <label className="field">
+                        Output token limit (this provider only)
+                        <input
+                          type="number"
+                          min={512}
+                          max={8000}
+                          value={value.groqMaxTokens}
+                          onChange={(e) =>
+                            setValue({
+                              ...value,
+                              groqMaxTokens: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                    )}
+                    <p className="help">
+                      {info.note}
+                      {!info.hasKey && (
+                        <>
+                          {" "}
+                          Add <code>{info.keyEnv.join(" + ")}</code> to{" "}
+                          <code>.env</code>, then restart.{" "}
+                          <a href={info.keyUrl} target="_blank" rel="noreferrer">
+                            Get a key
+                          </a>
+                        </>
+                      )}
+                    </p>
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy || !info.hasKey || loadingModels.includes(id)}
+                        onClick={() => void fetchModels(id)}
+                      >
+                        <Icon name="refresh" /> Refresh models
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy || !info.hasKey}
+                        onClick={() =>
+                          action(async () => {
+                            const r = await request<{ message: string }>(
+                              "/api/provider",
+                              "POST",
+                              { action: "test", provider: id, model: chosen },
+                            );
+                            setNotice(r.message);
+                          })
+                        }
+                      >
+                        <Icon name="check" /> Test
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+            <label className="check-field">
+              <input
+                type="checkbox"
+                checked={value.stream}
                 onChange={(e) =>
-                  setValue({
-                    ...value,
-                    models: { ...value.models, [provider]: e.target.value },
-                  })
+                  setValue({ ...value, stream: e.target.checked })
                 }
-              >
-                <option value="">
-                  {loadingModels
-                    ? "Loading free models…"
-                    : models.length
-                      ? "Select a free model"
-                      : "No free models available"}
-                </option>
-                {models.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
+              />{" "}
+              Stream provider responses
             </label>
-            {loadingModels && (
-              <p className="help" role="status">
-                Fetching the selected provider’s catalog…
-              </p>
-            )}
-            {!loadingModels && catalog?.error && (
-              <p className="notice error" role="alert">
-                {catalog.error}
-              </p>
-            )}
-            {!loadingModels && !catalog?.error && (
-              <p className="help" role="status">
-                {models.length
-                  ? `${models.length} ${provider === "groq" ? "Free plan chat" : "free chat"} models available. Free usage has rate limits.`
-                  : "No eligible free chat models were found. Check your key permissions and refresh."}
-              </p>
-            )}
-            {!loadingModels &&
-              value.models[provider] &&
-              !models.includes(value.models[provider]) && (
-                <p className="help">
-                  Your saved model is excluded. Select a model from the free
-                  list.
-                </p>
-              )}
-            {provider === "groq" ? (
-              <>
-                <label className="check-field">
-                  <input
-                    type="checkbox"
-                    checked={value.groqFreePlanConfirmed}
-                    onChange={(e) =>
-                      setValue({
-                        ...value,
-                        groqFreePlanConfirmed: e.target.checked,
-                      })
-                    }
-                  />
-                  My Groq organization is on the Free plan
-                </label>
-                <p className="help">
-                  Check your plan in the{" "}
-                  <a
-                    href="https://console.groq.com/settings/billing"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Groq console
-                  </a>
-                  . The app cannot verify your billing tier. These models are
-                  billed on the Developer plan; clear this confirmation if you
-                  upgrade.
-                </p>
-              </>
-            ) : (
-              <p className="help">
-                Only zero-priced :free variants are listed. Requests enforce a
-                zero-price ceiling and never fall back to a paid model.
-              </p>
-            )}
-            <div className="button-row">
-              <button
-                disabled={busy || loadingModels}
-                className="secondary"
-                onClick={() => {
-                  setCatalog(null);
-                  setCatalogRefresh((n) => n + 1);
-                }}
-              >
-                <Icon name="refresh" /> Refresh models
-              </button>
-              <button
-                className="secondary"
-                disabled={
-                  busy ||
-                  loadingModels ||
-                  !models.includes(value.models[provider]) ||
-                  (provider === "groq" && !value.groqFreePlanConfirmed)
-                }
-                onClick={() =>
-                  action(async () => {
-                    await request("/api/settings", "PUT", value);
-                    await onSave();
-                    const r = await request<{ message: string }>(
-                      "/api/provider",
-                      "POST",
-                      {
-                        action: "test",
-                        provider,
-                        model: value.models[provider],
-                      },
-                    );
-                    setNotice(r.message);
-                  })
-                }
-              >
-                <Icon name="check" /> Save & test connection
-              </button>
-            </div>
             <div className="info-box">
               <Icon name="shield" />
               <div>
                 <strong>Private by design, local by default</strong>
                 <p>
-                  Add{" "}
-                  {provider === "groq" ? "GROQ_API_KEY" : "OPENROUTER_API_KEY"}{" "}
-                  to <code>.env</code> or <code>.env.local</code> and restart.
-                  The app never asks for your key in the browser.
+                  Only the providers above receive your ideas and context. A
+                  second key for the same provider can be set as{" "}
+                  <code>GROQ_API_KEY_FALLBACK</code> (likewise for the others);
+                  it takes over when the first is out of quota.
                 </p>
               </div>
             </div>
-            <div className="field-grid">
-              <label className="field">
-                Output token limit
-                <input
-                  type="number"
-                  min={1024}
-                  max={12000}
-                  value={value.maxTokens}
-                  onChange={(e) =>
-                    setValue({ ...value, maxTokens: Number(e.target.value) })
-                  }
-                />
-              </label>
-              <label className="check-field">
-                <input
-                  type="checkbox"
-                  checked={value.stream}
-                  onChange={(e) =>
-                    setValue({ ...value, stream: e.target.checked })
-                  }
-                />{" "}
-                Stream provider responses
-              </label>
-            </div>
-            {provider === "openrouter" ? (
-              <>
-                <label className="check-field">
-                  <input
-                    type="checkbox"
-                    checked={value.openRouterZdr}
-                    onChange={(e) =>
-                      setValue({ ...value, openRouterZdr: e.target.checked })
-                    }
-                  />{" "}
-                  Require zero data retention endpoints
-                </label>
-                <p className="help">
-                  Requests always deny provider data collection and disable
-                  endpoint fallback. ZDR may limit model availability.
-                  OpenRouter routes your selected model to an eligible upstream
-                  endpoint. Review your account logging and training settings.
-                </p>
-                <a
-                  className="text-link"
-                  href="https://openrouter.ai/docs/guides/privacy-and-logging"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  OpenRouter privacy documentation{" "}
-                  <Icon name="external" size={13} />
-                </a>
-              </>
-            ) : (
-              <>
-                <p className="help">
-                  Enable Zero Data Retention in Groq’s organization Data
-                  Controls. Inference data can otherwise be retained for
-                  reliability or abuse monitoring. This setting cannot be
-                  enabled through the app.
-                </p>
-                <a
-                  className="text-link"
-                  href="https://console.groq.com/docs/your-data"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Groq data controls <Icon name="external" size={13} />
-                </a>
-              </>
-            )}
           </>
         )}
         {tab === "Preferences" && (
