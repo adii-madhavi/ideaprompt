@@ -3,6 +3,7 @@ import {
   selectedModel,
   credentials,
   ProviderError,
+  availableModels,
   type CompleteOptions,
 } from "./providers";
 import {
@@ -67,7 +68,20 @@ export async function generate(
       db.messages(project.id, 8),
       selected,
     );
-    const raw = await call({ settings, messages, signal, onChunk });
+    // Revalidate once per run; reuse that snapshot for the immediate review.
+    let modelCatalog: Promise<string[]> | undefined;
+    const loadModelCatalog = (requestSignal: AbortSignal) =>
+      modelCatalog ??= availableModels(settings, requestSignal);
+    const activity = (phase: "Draft" | "Review"): CompleteOptions["onActivity"] => (state) => {
+      const descriptions = {
+        catalog: "Checking model availability…",
+        waiting: "Waiting for the selected model to respond…",
+        thinking: "The model is thinking before writing…",
+        writing: "Receiving generated text…",
+      };
+      emit({ type: "status", message: `${phase} · ${descriptions[state]}` });
+    };
+    const raw = await call({ settings, messages, signal, onChunk, loadModelCatalog, onActivity: activity("Draft") });
     signal.throwIfAborted();
     let parsed;
     try {
@@ -85,6 +99,8 @@ export async function generate(
         messages: reviewMessages(messages, raw, settings.controls, input.mode),
         signal,
         onChunk,
+        loadModelCatalog,
+        onActivity: activity("Review"),
       });
       try {
         parsed = parseDraft(reviewed);

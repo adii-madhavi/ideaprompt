@@ -302,6 +302,13 @@ export function SettingsModal({
                 Stream provider responses
               </label>
             </div>
+            {provider === "groq" && (
+              <p className="help">
+                Groq free models have a limited token allowance. The app may lower
+                the output limit to leave room for your idea, context and review.
+                Large contexts may need a shorter summary.
+              </p>
+            )}
             {provider === "openrouter" ? (
               <>
                 <label className="check-field">

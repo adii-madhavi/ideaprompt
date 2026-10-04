@@ -8,7 +8,7 @@ import { Store } from "../src/lib/db";
 import { generate } from "../src/lib/generate";
 import { availableModels, complete, ProviderError } from "../src/lib/providers";
 import { DEFAULT_CONTROLS, defaultSettings } from "../src/lib/checklist";
-import { PROMPT_SECTIONS, reviewCoverage } from "../src/lib/prompts";
+import { PROMPT_SECTIONS, reviewCoverage, generationMessages } from "../src/lib/prompts";
 import { localGuard, body } from "../src/lib/http";
 import {
   generationSchema,
@@ -369,12 +369,24 @@ test("provider streaming handles fragmented UTF-8, SSE comments, terminal marker
       "Hello ₹",
     );
     assert.deepEqual(sent.provider, {
+      sort: "latency",
       data_collection: "deny",
       zdr: true,
       allow_fallbacks: false,
       require_parameters: true,
       max_price: { prompt: 0, completion: 0, request: 0, image: 0 },
     });
+    assert.equal(sent.reasoning, undefined, "Do not add unsupported reasoning controls to other models");
+    settings.models.openrouter = "qwen/qwen3.8-27b:free";
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith("/models"))
+        return Response.json({ data: [{ ...freeModel, id: settings.models.openrouter }] });
+      sent = JSON.parse(String(init?.body));
+      return new Response('data: {"choices":[{"delta":{"content":"Connected"},"finish_reason":"stop"}]}\n\n');
+    };
+    await complete({ settings, messages: [], signal: new AbortController().signal });
+    assert.deepEqual(sent.reasoning, { effort: "low" }, "Avoid Qwen's extra-high reasoning default for interactive drafts");
+    settings.models.openrouter = freeModel.id;
     globalThis.fetch = withCatalog(
       async () =>
         new Response('data: {"error":{"message":"test-secret-only"}}\n\n'),
@@ -419,6 +431,98 @@ test("provider streaming handles fragmented UTF-8, SSE comments, terminal marker
     else process.env.OPENROUTER_API_KEY = oldKey;
     db.close();
   }
+});
+
+test("generation reports thinking before text and checks the catalog only once across draft and review", async () => {
+  const original = globalThis.fetch, oldKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-secret-only";
+  const { db, input } = setup();
+  const settings = db.settings().value;
+  settings.provider = "openrouter";
+  settings.models.openrouter = freeModel.id;
+  db.saveSettings(settings);
+  let catalogs = 0, calls = 0;
+  const events: { type?: string; message?: string }[] = [];
+  try {
+    globalThis.fetch = async (url) => {
+      if (String(url).endsWith("/models")) {
+        catalogs++;
+        return Response.json({ data: [freeModel] });
+      }
+      calls++;
+      const encoder = new TextEncoder();
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning":"private thinking"}}]}\n\n'));
+        },
+        pull(controller) {
+          assert.ok(events.some((event) => event.message?.includes("thinking")), "Thinking must be reported before draft text arrives");
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(fixture()) }, finish_reason: "stop" }] })}\n\n`));
+          controller.close();
+        },
+      }, { highWaterMark: 0 }));
+    };
+    await generate(db, input, new AbortController().signal, (event) => events.push(event as typeof events[number]));
+    assert.equal(calls, 2, "Preserve the separate review pass");
+    assert.equal(catalogs, 1, "Reuse the catalog within this generation");
+    assert.ok(!JSON.stringify(events).includes("private thinking"), "Never expose reasoning text");
+    assert.equal(db.versions(input.projectId).length, 1);
+  } finally {
+    db.close();
+    globalThis.fetch = original;
+    if (oldKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = oldKey;
+  }
+});
+
+test("Groq requests leave room for input tokens and oversized input gets an actionable error", async () => {
+  const original = globalThis.fetch, oldKey = process.env.GROQ_API_KEY;
+  process.env.GROQ_API_KEY = "test-secret-only";
+  const settings = defaultSettings();
+  settings.groqFreePlanConfirmed = true;
+  settings.models.groq = "openai/gpt-oss-120b";
+  let inferenceCalls = 0;
+  try {
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith("/models"))
+        return Response.json({ data: [{ id: settings.models.groq, active: true }] });
+      inferenceCalls++;
+      const sent = JSON.parse(String(init?.body));
+      const estimatedInput = sent.messages.reduce((sum: number, message: { content: string }) => sum + Math.ceil(Buffer.byteLength(message.content) / 3) + 12, 128);
+      if (estimatedInput + sent.max_completion_tokens > 8000)
+        return new Response("Upstream private details", { status: 413 });
+      return new Response('data: {"choices":[{"delta":{"content":"Complete"},"finish_reason":"stop"}]}\n\n');
+    };
+    assert.equal(await complete({ settings, messages: [{ role: "user", content: "x".repeat(9000) }], signal: new AbortController().signal }), "Complete");
+    const before = inferenceCalls;
+    await assert.rejects(complete({ settings, messages: [{ role: "user", content: "x".repeat(24000) }], signal: new AbortController().signal }), /context.*too large.*free.*limit/i);
+    assert.equal(inferenceCalls, before, "Do not send a request that cannot fit");
+    globalThis.fetch = async (url) => String(url).endsWith("/models")
+      ? Response.json({ data: [{ id: settings.models.groq, active: true }] })
+      : new Response("Upstream private details", { status: 413 });
+    await assert.rejects(complete({ settings, messages: [], signal: new AbortController().signal }), /too large.*reduce/i);
+  } finally {
+    globalThis.fetch = original;
+    if (oldKey === undefined) delete process.env.GROQ_API_KEY;
+    else process.env.GROQ_API_KEY = oldKey;
+  }
+});
+
+test("follow-up requests retain owner answers and the latest draft without repeating superseded drafts", () => {
+  const { db, input } = setup();
+  try {
+    const history = Array.from({ length: 8 }, (_, index) => ({
+      id: randomUUID(), createdAt: new Date().toISOString(),
+      role: index % 2 ? "assistant" as const : "user" as const,
+      content: index % 2 ? `draft-${index} ${"x".repeat(6000)}` : `confirmed answer ${index}`,
+    }));
+    const messages = generationMessages(input, db.project(input.projectId)!, db.settings().value, history, []);
+    assert.equal(messages.filter(message => message.role === "assistant").length, 1);
+    assert.ok(messages.some(message => message.content.startsWith("draft-7")));
+    for (const answer of history.filter(message => message.role === "user"))
+      assert.ok(messages.some(message => message.content === answer.content));
+    assert.ok(messages.reduce((sum, message) => sum + message.content.length, 0) < 18000, "Old drafts must not multiply request size");
+  } finally { db.close(); }
 });
 
 test("free-only catalog and inference reject paid, unknown-priced, non-chat and stale models before sending ideas", async () => {

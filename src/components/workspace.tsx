@@ -89,7 +89,8 @@ export default function Workspace() {
   const [selectedExamples, setSelectedExamples] = useState<string[]>([]),
     [busy, setBusy] = useState(false),
     [status, setStatus] = useState(""),
-    [characters, setCharacters] = useState(0);
+    [characters, setCharacters] = useState(0),
+    [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState(""),
     [toast, setToast] = useState(""),
     [showSettings, setShowSettings] = useState(false),
@@ -247,6 +248,11 @@ export default function Workspace() {
     setError("");
     setStatus("Saving your starting point…");
     setCharacters(0);
+    setElapsedSeconds(0);
+    const startedAt = Date.now();
+    const elapsedTimer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
     const abort = new AbortController();
     controller.current = abort;
     let savedId = project?.id;
@@ -346,6 +352,7 @@ export default function Workspace() {
         } catch {}
       }
     } finally {
+      window.clearInterval(elapsedTimer);
       generationLock.current = false;
       controller.current = null;
       setBusy(false);
@@ -1060,10 +1067,17 @@ export default function Workspace() {
                   <div>
                     <strong>{status}</strong>
                     <span>
+                      {`${elapsedSeconds}s elapsed · `}
                       {characters
                         ? `${characters.toLocaleString()} characters received · Your earlier draft stays safe`
-                        : "Connecting to your selected model…"}
+                        : "Waiting for draft text"}
                     </span>
+                    {elapsedSeconds >= 20 && (
+                      <span>
+                        Drafts include a separate review. Free models can take longer.
+                        You can cancel and choose another model in Settings.
+                      </span>
+                    )}
                   </div>
                 </div>
               )}

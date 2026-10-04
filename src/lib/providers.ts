@@ -12,6 +12,8 @@ export type CompleteOptions = {
   onChunk?: (text: string) => void;
   maxTokens?: number;
   streaming?: boolean;
+  loadModelCatalog?: (signal: AbortSignal) => Promise<string[]>;
+  onActivity?: (activity: "catalog" | "waiting" | "thinking" | "writing") => void;
 };
 const ENDPOINTS = {
   groq: "https://api.groq.com/openai/v1",
@@ -88,6 +90,7 @@ function statusError(status: number) {
         403: "The provider denied access. Check key permissions and account privacy settings.",
         402: "The provider account needs credits. No other provider was used.",
         404: "This model is unavailable. Select an available model in Settings.",
+        413: "This request is too large for the selected model. Reduce project context or examples, or start a new project with a concise summary. Retrying the same request will not fix it; saved versions are intact.",
         429: "The provider rate limit was reached. Wait and try again.",
         503: "No eligible provider endpoint is available. Check the model and privacy restrictions.",
       } as Record<number, string>
@@ -135,11 +138,28 @@ export async function complete(options: CompleteOptions): Promise<string> {
   );
   const combined = AbortSignal.any([signal, timeout]);
   try {
-    if (!(await availableModels(settings, combined)).includes(model))
+    options.onActivity?.("catalog");
+    const models = await (options.loadModelCatalog?.(combined) ?? availableModels(settings, combined));
+    if (!models.includes(model))
       throw new ProviderError(
         "This model is not in the current free chat catalog. Select a free model in Settings.",
       );
-    const maxTokens = options.maxTokens ?? settings.maxTokens;
+    let maxTokens = options.maxTokens ?? settings.maxTokens;
+    if (settings.provider === "groq") {
+      // Listed free chat models have an 8K TPM allowance (checked 2026-10-04).
+      // Estimate conservatively and leave headroom for tokenization differences.
+      const estimatedInput = messages.reduce(
+        (sum, message) => sum + Math.ceil(Buffer.byteLength(message.content, "utf8") / 3) + 12,
+        128,
+      );
+      const availableOutput = 7600 - estimatedInput;
+      if (availableOutput < Math.min(1024, maxTokens))
+        throw new ProviderError(
+          "The project context is too large for this model's free request limit. Reduce context or examples, or start a new project with a concise summary of confirmed requirements. Your saved versions are intact.",
+        );
+      maxTokens = Math.min(maxTokens, availableOutput);
+    }
+    options.onActivity?.("waiting");
     const response = await fetch(
       `${ENDPOINTS[settings.provider]}/chat/completions`,
       {
@@ -156,7 +176,13 @@ export async function complete(options: CompleteOptions): Promise<string> {
             ? { max_completion_tokens: maxTokens }
             : {
                 max_tokens: maxTokens,
+                // This model defaults to extra-high reasoning. Low effort keeps
+                // interactive drafts responsive while retaining the review pass.
+                ...(model === "qwen/qwen3.8-27b:free"
+                  ? { reasoning: { effort: "low" } }
+                  : {}),
                 provider: {
+                  sort: "latency",
                   data_collection: "deny",
                   zdr: settings.openRouterZdr,
                   allow_fallbacks: false,
@@ -205,6 +231,7 @@ export async function complete(options: CompleteOptions): Promise<string> {
       result = "",
       finished = false,
       wireSize = 0;
+    let thinkingReported = false, writingReported = false;
     const frame = (value: string) => {
       const payload = value
         .split("\n")
@@ -233,7 +260,17 @@ export async function complete(options: CompleteOptions): Promise<string> {
           "The model did not finish a text response. Choose a compatible chat model.",
         );
       const content = choice?.delta?.content;
-      if (typeof content === "string") {
+      const delta = choice?.delta;
+      if (!thinkingReported && !writingReported &&
+          (delta?.reasoning || delta?.reasoning_content || delta?.reasoning_details?.length)) {
+        thinkingReported = true;
+        options.onActivity?.("thinking");
+      }
+      if (typeof content === "string" && content.length) {
+        if (!writingReported) {
+          writingReported = true;
+          options.onActivity?.("writing");
+        }
         result += content;
         if (result.length > 250000)
           throw new ProviderError("Output exceeded the text limit.");
@@ -273,7 +310,7 @@ export async function complete(options: CompleteOptions): Promise<string> {
       throw new ProviderError("Generation cancelled. Previous work is intact.");
     if (timeout.aborted)
       throw new ProviderError(
-        "The provider timed out. Try again or simplify the request.",
+        "The selected model timed out before finishing. Retry later or choose another free model in Settings. Your saved versions are intact.",
       );
     if (error instanceof ProviderError) throw error;
     throw new ProviderError(
