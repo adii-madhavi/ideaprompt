@@ -8,7 +8,15 @@ IdeaPrompt turns rough ideas into refined briefs, practical implementation plans
 
 **Your assistant does the reasoning. No separate API key, model-provider call or running website is required.** Your host assistant's normal limits still apply.
 
-[Install](#installation) · [Compatibility](#compatibility) · [Usage](#usage) · [What you get](#what-you-get) · [Website version](#website-version)
+[Demo](#demo) · [Install](#installation) · [Compatibility](#compatibility) · [Usage](#usage) · [What you get](#what-you-get) · [Website version](#website-version)
+
+## Demo
+
+[![Watch the IdeaPrompt demo with the redesigned 3D-style presenter](assets/demo/poster-v2.png)](assets/demo/ideaprompt-demo-v2.mp4)
+
+**[Watch or download the 83-second demo](https://github.com/adii-madhavi/ideaprompt/raw/refs/heads/main/assets/demo/ideaprompt-demo-v2.mp4)**
+
+Follow a beginner's browser racing-game idea through clarification, planning, a coding-agent handoff and review. The 1080p video features a reference-inspired 3D-style animated presenter, ElevenLabs narration, captions, music and transitions. The interfaces are illustrative examples, not a recording of a tested agent session; presenter expressions follow the audio rather than phoneme-level lip-sync.
 
 ## What it does
 
