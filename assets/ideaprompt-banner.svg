@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="title desc">
+  <title id="title">IdeaPrompt</title>
+  <desc id="desc">From a rough idea to a clear plan and a build-ready prompt. A portable Agent Skill.</desc>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#e9e4e5" stroke-opacity=".045"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="320" rx="12" fill="#0b0b0e"/>
+  <rect width="1280" height="320" rx="12" fill="url(#grid)"/>
+  <path d="M52 58H1228" stroke="#473035"/>
+  <circle cx="59" cy="36" r="4" fill="#f0787e"/>
+  <text x="76" y="41" fill="#b6aaad" font-family="monospace" font-size="12" letter-spacing="2">A PORTABLE AGENT SKILL</text>
+  <text x="52" y="160" fill="#f0787e" font-family="monospace" font-weight="700" font-size="72" letter-spacing="-4">IdeaPrompt<tspan fill="#e9e4e5">_</tspan></text>
+  <text x="55" y="203" fill="#e9e4e5" font-family="monospace" font-size="19">Less guessing. A clearer starting point.</text>
+  <path d="M55 249H526" stroke="#473035"/>
+  <text x="55" y="280" fill="#b6aaad" font-family="monospace" font-size="13" letter-spacing="1">REFINE THE IDEA. PLAN THE WORK. WRITE THE HANDOFF.</text>
+  <rect x="850" y="99" width="375" height="148" rx="6" fill="#141416" stroke="#473035"/>
+  <text x="875" y="135" fill="#f0787e" font-family="monospace" font-size="16">01  ROUGH IDEA</text>
+  <text x="875" y="177" fill="#e9e4e5" font-family="monospace" font-size="16">02  CLEAR PLAN</text>
+  <text x="875" y="219" fill="#e9e4e5" font-family="monospace" font-size="16">03  BUILD-READY PROMPT</text>
+</svg>

@@ -1,19 +1,31 @@
+![IdeaPrompt — From rough idea to a clear plan and a build-ready prompt](assets/ideaprompt-banner.svg)
+
 # IdeaPrompt
 
-Turn a rough idea into a clear brief, a practical implementation plan, or a prompt you can hand to a coding agent.
+**Give your coding agent a clear starting point.**
 
-IdeaPrompt now runs as a **skill inside your assistant**. It preserves the website's refine, plan, prompt and engineering-review workflow, including quick drafts, clarification questions, proposed file structures and explicit assumptions. The host assistant does the reasoning; this skill makes no separate model API calls and needs no API key or running website. The host's normal usage limits still apply.
+IdeaPrompt turns rough ideas into refined briefs, practical implementation plans and reviewed execution prompts. Install it as an Agent Skill and use it in Codex, Claude Code or another assistant that supports the format.
 
-## Which branch?
+**Your assistant does the reasoning. No separate API key, model-provider call or running website is required.** Your host assistant's normal limits still apply.
 
-| Branch | Contents |
+[Install](#installation) · [Compatibility](#compatibility) · [Usage](#usage) · [What you get](#what-you-get) · [Website version](#website-version)
+
+## What it does
+
+| You bring | IdeaPrompt helps produce |
 | --- | --- |
-| [`main`](https://github.com/adii-madhavi/ideaprompt/tree/main) | The portable IdeaPrompt skill and its documentation. |
-| [`codex/website`](https://github.com/adii-madhavi/ideaprompt/tree/codex/website) | The preserved Next.js website, including the latest website updates from GitHub. |
+| A half-formed idea | A clear problem, intended users and a feasible first release |
+| A project you want to build | An ordered plan, proposed file structure and acceptance criteria |
+| A handoff to a coding agent | A self-contained prompt with requirements, constraints and checks |
+| A change to an existing repository | A focused plan that follows its conventions and preserves unrelated behavior |
 
-The old website and local generation-fix commit remain in Git history. Website databases and environment files are private, ignored local files, not part of the skill. This skill does not automatically load the website's projects, preferences or version history.
+Choose a **quick draft** to proceed with labeled assumptions, or **clarify first** to answer up to three questions that materially affect the plan. Confirmed answers carry forward; the workflow does not restart the interview every turn.
 
-## Install in Codex
+## Installation
+
+Install the **whole `skills/ideaprompt/` folder**, including `references/`. Copying only `SKILL.md` leaves the execution-prompt outline and review checklist behind.
+
+### Codex
 
 Ask Codex:
 
@@ -21,56 +33,138 @@ Ask Codex:
 Use $skill-installer to install https://github.com/adii-madhavi/ideaprompt/tree/main/skills/ideaprompt
 ```
 
-Start a new session after installation so the skill can be discovered. You can also copy the complete `skills/ideaprompt` folder into a supported skill directory. For a repository-scoped Codex installation, place it at `.agents/skills/ideaprompt/`. See the [official skills guide](https://learn.chatgpt.com/docs/build-skills) for supported discovery locations.
-
-The `SKILL.md` and relative references are portable instructions; other assistants need their own skill-loading support. The optional `agents/openai.yaml` supplies Codex display metadata.
-
-## Use it
+Start a new session after installation, then use:
 
 ```text
-Use $ideaprompt to refine this idea: a browser car-racing game for beginners.
+Use $ideaprompt to turn my idea into a practical implementation plan.
 ```
+
+For manual repository-scoped installation, copy the skill folder to `.agents/skills/ideaprompt/`. See the [official Codex skills guide](https://learn.chatgpt.com/docs/build-skills) for discovery and installation options.
+
+### Claude Code
+
+Download or clone this repository:
+
+```sh
+git clone https://github.com/adii-madhavi/ideaprompt.git
+```
+
+Copy `skills/ideaprompt/` from the clone into either of these locations:
+
+| Scope | Destination |
+| --- | --- |
+| One project | `<your-project>/.claude/skills/ideaprompt/` |
+| All local projects | `~/.claude/skills/ideaprompt/` |
+
+On Windows, `~` is your user home, for example `C:\Users\YourName`. Preserve any existing skill with the same name before replacing it.
+
+In Claude Code, invoke:
 
 ```text
-Use $ideaprompt in clarify-first mode. I want a hub of browser games funded
-by ads and sponsorships. Help me choose a manageable first version.
+/ideaprompt Plan a small browser car-racing game for a beginner.
 ```
+
+Claude Code supports `SKILL.md` skills and slash-command invocation. See its [official skills documentation](https://code.claude.com/docs/en/skills).
+
+### Other agents
+
+Use the agent's documented skill importer or copy the complete folder to its supported skills directory. Invocation syntax and automatic discovery vary. The core instructions use the [open Agent Skills format](https://agentskills.io/specification); `agents/openai.yaml` is optional Codex display metadata.
+
+An assistant without native skill support can read `SKILL.md` and the linked references as supplied instructions, but that does not provide automatic discovery or installation.
+
+## Compatibility
+
+| Environment | Support and verification |
+| --- | --- |
+| Codex | Includes installation guidance and display metadata. Skill structure and references validated. |
+| Claude Code | Uses its documented skill format; includes installation and invocation instructions. Runtime behavior has not been tested in Claude Code. |
+| Other Agent Skills-compatible agents | Portable instruction format; installation, tool availability and behavior depend on the host. Not individually tested. |
+| Assistants without skill support | Manual instruction use only; no automatic skill discovery. |
+
+**Portable does not mean identical behavior in every model or agent.** IdeaPrompt does not require Codex-specific tools, a particular model, an MCP connection or access to the old website database.
+
+## Usage
+
+The examples below use Codex's `$ideaprompt` form. In Claude Code, start with `/ideaprompt` instead.
+
+### Refine an idea
 
 ```text
-Use $ideaprompt for a quick implementation plan for my portfolio website.
-Keep it static, inexpensive and easy to maintain. Include a proposed file tree.
+Use $ideaprompt to refine a neighborhood tool-sharing service.
+Help me define the problem, users and smallest useful first version.
 ```
+
+### Clarify before planning
 
 ```text
-Use $ideaprompt to write a Claude Code execution prompt for adding CSV export
-to this repository. Inspect the existing flow and preserve unrelated behavior.
+Use $ideaprompt in clarify-first mode. I want a hub of browser games
+funded by ads and sponsorships. I'm new to development.
+Help me choose a manageable first release.
 ```
 
-Choose **refine**, **plan**, or **prompt**. Prompt is the default when you request a build handoff. Say **quick draft** to proceed with labeled assumptions, or **clarify first** for up to three questions that materially affect the plan. Provide a destination tool when relevant.
+### Make a practical plan
 
-You get the requested artifact, appropriate file structure, and a review of applicable requirements and checks. A static website will not acquire accounts, payments or a database without a reason. A raw idea can become a non-software workflow. Security coverage describes the specification, not a completed implementation audit.
+```text
+Use $ideaprompt for a quick implementation plan for a photography portfolio.
+Keep it static, inexpensive and easy to maintain. Include a file tree.
+```
 
-The skill stops at the requested planning artifact. It starts implementation only when your request also authorizes implementation. It does not silently retain personal preferences, save conversation history or contact outside model providers.
+### Write a coding-agent handoff
 
-## Return to the website
+```text
+Use $ideaprompt to write an execution prompt for adding CSV export
+to this repository. Inspect the current flow, preserve the UI and storage
+format, and include acceptance criteria and verification steps.
+```
 
-In this repository, switch to the website branch and follow its README:
+Name a destination tool when useful. Choosing Claude Code as the destination of a generated prompt is separate from running the skill inside Claude Code.
 
-```powershell
+## What you get
+
+| Mode | Deliverable |
+| --- | --- |
+| **Refine** | A clear concept, users, core workflow, boundaries, assumptions and unresolved decisions |
+| **Plan** | A brief, ordered implementation steps, appropriate architecture, proposed file/document tree and checks |
+| **Prompt** | A self-contained build handoff covering scope, stack, files, data, security, accessibility, operations, phases and acceptance criteria |
+
+For software plans and prompts, IdeaPrompt reviews applicable requirements and verification steps. Coverage is labeled **specified**, **missing** or **not applicable**, with supporting evidence or a reason. This is a specification review, not proof that an implementation is secure or tested.
+
+A static site stays simple. Accounts, databases and payments need a project requirement. A raw idea can become a script, service, operational workflow or document instead of a website. Existing-project work follows the repository's actual conventions.
+
+The skill stops at the requested planning artifact unless you also authorize implementation. It does not silently save personal preferences, train a model, create persistent memory or send project content to another inference provider. Content supplied to your host assistant remains subject to that host's data handling.
+
+## Website version
+
+| Branch | Purpose |
+| --- | --- |
+| [`main`](https://github.com/adii-madhavi/ideaprompt/tree/main) | The portable skill and its documentation |
+| [`codex/website`](https://github.com/adii-madhavi/ideaprompt/tree/codex/website) | The preserved Next.js website and its run instructions |
+
+To work on the website, preserve any uncommitted work, then switch branches:
+
+```sh
+git fetch origin
 git switch codex/website
 ```
 
-Commit or otherwise preserve any work before switching branches. Existing ignored `data/` and `.env` files stay local; keep using the intended database path when running the website.
+Read that branch's README for setup. Website projects, preferences and version history are not automatically imported into the skill. Ignored `.env` and `data/` files remain private local files; use the intended database path when running the website. Earlier website revisions remain in Git history.
 
-## Skill contents and checks
+## Inside the skill
 
 ```text
 skills/ideaprompt/
-  SKILL.md                         # Workflow and invocation rules
-  agents/openai.yaml               # Codex display metadata
-  references/execution-prompt.md   # Complete coding handoff structure
-  references/engineering-review.md # Applicable controls and honest coverage
-evaluations/scenarios.md           # Manual behavioral acceptance cases
+  SKILL.md                         # Workflow and invocation guidance
+  agents/openai.yaml               # Optional Codex display metadata
+  references/
+    execution-prompt.md            # Coding handoff outline
+    engineering-review.md          # Applicable controls and coverage rules
+evaluations/scenarios.md            # Manual behavioral acceptance cases
 ```
 
-When editing the skill, validate its frontmatter and references, then exercise the scenarios in `evaluations/scenarios.md`. That file describes behavioral checks; it is not an automated test runner. No Node server, model-provider account or package install is required to use the skill.
+Read the [skill](skills/ideaprompt/SKILL.md), [execution-prompt outline](skills/ideaprompt/references/execution-prompt.md), or [engineering-review checklist](skills/ideaprompt/references/engineering-review.md).
+
+## Contributing and validation
+
+Keep changes focused on clearer decisions, useful deliverables and preserved user intent. Keep credentials, personal examples, database files and generated build artifacts out of commits. Follow [AGENTS.md](AGENTS.md) when editing the skill.
+
+Validate frontmatter, relative reference links and display metadata after changes. Use the [behavioral scenarios](evaluations/scenarios.md) to assess scope preservation, clarification, file structures and honest review. They are manual acceptance cases, not an automated test runner. Report the agent/model and observed outcomes when evaluating behavior; structural validation alone does not establish cross-agent runtime compatibility.
