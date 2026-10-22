@@ -1,9 +1,7 @@
-<!-- BEGIN:nextjs-agent-rules -->
+# Working on IdeaPrompt
 
-# This is NOT the Next.js you know
+`main` distributes the skill at `skills/ideaprompt/`. The Next.js application lives on `codex/website`; its setup and provider rules apply on that branch only.
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+Read `README.md` and the skill before changing its behavior. Keep the workflow host-assistant driven, preserve explicit project constraints, and keep the execution-prompt outline and review checklist in their linked references. Only add an MCP dependency or external generation service when requested.
 
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
+For skill changes, check frontmatter, metadata and relative reference links, and evaluate the relevant cases in `evaluations/scenarios.md`. Distinguish structural validation from actual behavioral evaluation. Keep website databases, credentials, personal examples and build artifacts out of commits. Preserve both branch histories when updating the repository layout.

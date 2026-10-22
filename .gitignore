@@ -1,8 +1,11 @@
+# Local data from the website branch stays private when switching branches.
+.env*
+data/
 node_modules/
 .next/
-data/
-.env*
-!.env.example
 *.tsbuildinfo
 coverage/
 test-results/
+__pycache__/
+*.pyc
+.DS_Store

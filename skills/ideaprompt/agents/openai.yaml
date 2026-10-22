@@ -1,0 +1,4 @@
+interface:
+  display_name: "IdeaPrompt"
+  short_description: "Turn rough ideas into reviewed build-ready prompts"
+  default_prompt: "Use $ideaprompt to turn my idea into a practical plan and a reviewed execution prompt."
