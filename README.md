@@ -85,7 +85,7 @@ An assistant without native skill support can read `SKILL.md` and the linked ref
 | Environment | Support and verification |
 | --- | --- |
 | Codex | Includes installation guidance and display metadata. Skill structure and references validated. |
-| Claude Code | Uses its documented skill format; includes installation and invocation instructions. Runtime behavior has not been tested in Claude Code. |
+| Claude Code | Uses its documented skill format; includes installation and invocation instructions. Tested in Claude Code (desktop app, Claude Opus 5.5, October 2026): installed to `~/.claude/skills/ideaprompt/`, discovered without a restart, and passed the static-portfolio and volunteer-checklist [behavioral scenarios](evaluations/scenarios.md). Other scenarios not yet run in Claude Code. |
 | Other Agent Skills-compatible agents | Portable instruction format; installation, tool availability and behavior depend on the host. Not individually tested. |
 | Assistants without skill support | Manual instruction use only; no automatic skill discovery. |
 
