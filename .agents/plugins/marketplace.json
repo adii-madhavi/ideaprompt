@@ -1,0 +1,21 @@
+{
+  "name": "ideaprompt",
+  "interface": {
+    "displayName": "IdeaPrompt"
+  },
+  "plugins": [
+    {
+      "name": "ideaprompt",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/adii-madhavi/ideaprompt.git",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

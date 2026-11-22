@@ -35,7 +35,14 @@ Install the **whole `skills/ideaprompt/` folder**, including `references/`. Copy
 
 ### Codex
 
-Ask Codex:
+Install as a plugin (Codex CLI with plugin marketplaces):
+
+```sh
+codex plugin marketplace add adii-madhavi/ideaprompt
+codex plugin add ideaprompt@ideaprompt
+```
+
+Start a new session; the skill appears as `ideaprompt:ideaprompt`. Or ask Codex to install just the skill:
 
 ```text
 Use $skill-installer to install https://github.com/adii-madhavi/ideaprompt/tree/main/skills/ideaprompt
@@ -51,7 +58,16 @@ For manual repository-scoped installation, copy the skill folder to `.agents/ski
 
 ### Claude Code
 
-Download or clone this repository:
+Install as a plugin (recommended; updates with `/plugin marketplace update`):
+
+```text
+/plugin marketplace add adii-madhavi/ideaprompt
+/plugin install ideaprompt@ideaprompt
+```
+
+The skill is then available as `/ideaprompt:ideaprompt` and is also picked automatically when relevant.
+
+Or install the skill manually. Download or clone this repository:
 
 ```sh
 git clone https://github.com/adii-madhavi/ideaprompt.git
@@ -74,9 +90,23 @@ In Claude Code, invoke:
 
 Claude Code supports `SKILL.md` skills and slash-command invocation. See its [official skills documentation](https://code.claude.com/docs/en/skills).
 
+### Gemini CLI
+
+```sh
+gemini skills install https://github.com/adii-madhavi/ideaprompt.git --path skills/ideaprompt
+```
+
+Check it with `gemini skills list`.
+
 ### Other agents
 
-Use the agent's documented skill importer or copy the complete folder to its supported skills directory. Invocation syntax and automatic discovery vary. The core instructions use the [open Agent Skills format](https://agentskills.io/specification); `agents/openai.yaml` is optional Codex display metadata.
+Agents supported by the [`skills` CLI](https://github.com/vercel-labs/skills) can install it with:
+
+```sh
+npx skills add adii-madhavi/ideaprompt
+```
+
+Otherwise, use the agent's documented skill importer or copy the complete folder to its supported skills directory. Invocation syntax and automatic discovery vary. The core instructions use the [open Agent Skills format](https://agentskills.io/specification); `agents/openai.yaml` is optional Codex display metadata.
 
 An assistant without native skill support can read `SKILL.md` and the linked references as supplied instructions, but that does not provide automatic discovery or installation.
 
@@ -84,8 +114,9 @@ An assistant without native skill support can read `SKILL.md` and the linked ref
 
 | Environment | Support and verification |
 | --- | --- |
-| Codex | Includes installation guidance and display metadata. Skill structure and references validated. |
-| Claude Code | Uses its documented skill format; includes installation and invocation instructions. Tested in Claude Code (desktop app, Claude Opus 5.5, October 2026): installed to `~/.claude/skills/ideaprompt/`, discovered without a restart, and passed the static-portfolio and volunteer-checklist [behavioral scenarios](evaluations/scenarios.md). Other scenarios not yet run in Claude Code. |
+| Codex | Installable as a plugin or a standalone skill; includes display metadata. Plugin install tested with Codex CLI 0.155.1 (November 2026): installed, enabled and listed as `ideaprompt:ideaprompt` in a new session. Behavioral scenarios not yet run in Codex. |
+| Claude Code | Installable as a plugin (`/plugin install`) or a standalone skill. Plugin manifests pass `claude plugin validate`, and the plugin installed and enabled from a local marketplace (November 2026). Standalone skill tested in Claude Code (desktop app, Claude Opus 5.5, October 2026): installed to `~/.claude/skills/ideaprompt/`, discovered without a restart, and passed the static-portfolio and volunteer-checklist [behavioral scenarios](evaluations/scenarios.md). Other scenarios not yet run in Claude Code. |
+| Gemini CLI | Installs as a standalone skill with `gemini skills install`; tested with Gemini CLI 0.56.0 (November 2026), discovered and enabled. Behavioral scenarios not yet run. |
 | Other Agent Skills-compatible agents | Portable instruction format; installation, tool availability and behavior depend on the host. Not individually tested. |
 | Assistants without skill support | Manual instruction use only; no automatic skill discovery. |
 
@@ -160,6 +191,9 @@ Read that branch's README for setup. Website projects, preferences and version h
 ## Inside the skill
 
 ```text
+.claude-plugin/                     # Claude Code plugin + marketplace manifests
+.codex-plugin/plugin.json           # Codex plugin manifest
+.agents/plugins/marketplace.json    # Codex marketplace entry
 skills/ideaprompt/
   SKILL.md                         # Workflow and invocation guidance
   agents/openai.yaml               # Optional Codex display metadata

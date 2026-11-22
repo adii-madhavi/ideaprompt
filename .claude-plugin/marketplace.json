@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ideaprompt",
+  "description": "IdeaPrompt: from rough idea to a clear plan and a build-ready prompt.",
+  "owner": {
+    "name": "adii-madhavi",
+    "url": "https://github.com/adii-madhavi"
+  },
+  "plugins": [
+    {
+      "name": "ideaprompt",
+      "description": "Turn rough ideas into refined briefs, implementation plans and reviewed coding-agent prompts.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

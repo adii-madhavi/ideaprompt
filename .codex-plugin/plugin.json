@@ -1,0 +1,25 @@
+{
+  "name": "ideaprompt",
+  "version": "1.0.0",
+  "description": "Turn rough product or website ideas into refined briefs, practical implementation plans, or reviewed coding-agent execution prompts.",
+  "author": {
+    "name": "adii-madhavi",
+    "url": "https://github.com/adii-madhavi"
+  },
+  "homepage": "https://github.com/adii-madhavi/ideaprompt",
+  "repository": "https://github.com/adii-madhavi/ideaprompt",
+  "keywords": ["planning", "prompts", "mvp", "specification", "handoff"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "IdeaPrompt",
+    "shortDescription": "Turn rough ideas into reviewed build-ready prompts",
+    "longDescription": "Clarify an idea, scope a first release, plan the build and hand off a reviewed execution prompt to a coding agent. Uses the host assistant only; no API key, MCP server or website required.",
+    "developerName": "adii-madhavi",
+    "category": "Productivity",
+    "capabilities": ["Instructions"],
+    "websiteURL": "https://github.com/adii-madhavi/ideaprompt",
+    "defaultPrompt": [
+      "Use $ideaprompt to turn my idea into a practical plan and a reviewed execution prompt."
+    ]
+  }
+}
