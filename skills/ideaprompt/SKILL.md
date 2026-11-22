@@ -1,6 +1,7 @@
 ---
 name: ideaprompt
 description: "Turn rough product or website ideas into refined briefs, practical implementation plans, or reviewed coding-agent execution prompts. Use for idea clarification, MVP scoping, build handoffs, and planning changes to existing projects. Supports quick drafts and clarify-first workflows."
+license: "Use-only. Install and use for any purpose; no modification or redistribution. See LICENSE in the repository."
 ---
 
 # IdeaPrompt

@@ -8,7 +8,7 @@ IdeaPrompt turns rough ideas into refined briefs, practical implementation plans
 
 **Your assistant does the reasoning. No separate API key, model-provider call or running website is required.** Your host assistant's normal limits still apply.
 
-[Demo](#demo) · [Install](#installation) · [Compatibility](#compatibility) · [Usage](#usage) · [What you get](#what-you-get) · [Website version](#website-version)
+[Demo](#demo) · [Install](#installation) · [Compatibility](#compatibility) · [Usage](#usage) · [What you get](#what-you-get) · [Website version](#website-version) · [License](#license)
 
 ## Demo
 
@@ -210,3 +210,7 @@ Read the [skill](skills/ideaprompt/SKILL.md), [execution-prompt outline](skills/
 Keep changes focused on clearer decisions, useful deliverables and preserved user intent. Keep credentials, personal examples, database files and generated build artifacts out of commits. Follow [AGENTS.md](AGENTS.md) when editing the skill.
 
 Validate frontmatter, relative reference links and display metadata after changes. Use the [behavioral scenarios](evaluations/scenarios.md) to assess scope preservation, clarification, file structures and honest review. They are manual acceptance cases, not an automated test runner. Report the agent/model and observed outcomes when evaluating behavior; structural validation alone does not establish cross-agent runtime compatibility.
+
+## License
+
+IdeaPrompt is free to install and use for any purpose, including at work. You may not modify, redistribute, resell or republish it. Forking to propose changes back through a pull request is allowed. See [LICENSE](LICENSE) for the full terms.

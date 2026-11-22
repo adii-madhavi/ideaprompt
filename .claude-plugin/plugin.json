@@ -8,5 +8,12 @@
   },
   "homepage": "https://github.com/adii-madhavi/ideaprompt",
   "repository": "https://github.com/adii-madhavi/ideaprompt",
-  "keywords": ["planning", "prompts", "mvp", "specification", "handoff"]
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "planning",
+    "prompts",
+    "mvp",
+    "specification",
+    "handoff"
+  ]
 }
